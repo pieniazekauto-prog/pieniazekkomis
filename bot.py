@@ -3,6 +3,21 @@ from discord import app_commands, Interaction, ButtonStyle
 from discord.ui import Modal, TextInput, View, Select, button
 from datetime import datetime
 import os
+from flask import Flask
+import threading
+
+# ==============================================================================
+# FLASK SERVER (Dla Render.com - zapobiega uśpieniu bota)
+# ==============================================================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Pieniążek Auto Bot jest online 24/7!"
+
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 # ==============================================================================
 # CONFIGURATION
@@ -349,13 +364,20 @@ async def mandat(interaction: Interaction, pracownik: discord.Member):
 
 
 # ==============================================================================
-# URUCHOMIENIE BOTA
+# URUCHOMIENIE BOTA ORAZ SERWERA FLASK
 # ==============================================================================
 @client.event
 async def on_ready():
     print(f"✅ Bot działa! Zalogowano jako: {client.user}")
 
-if TOKEN is None:
-    print("❌ BŁĄD: Brak zmiennej środowiskowej DISCORD_TOKEN! Ustaw ją w panelu Render.")
-else:
-    client.run(TOKEN)
+if __name__ == "__main__":
+    if TOKEN is None:
+        print("❌ BŁĄD: Brak zmiennej środowiskowej DISCORD_TOKEN! Ustaw ją w panelu Render.")
+    else:
+        # Uruchomienie mikroserwera Flask w tle na porcie z Render.com
+        flask_thread = threading.Thread(target=run_flask)
+        flask_thread.daemon = True
+        flask_thread.start()
+        
+        # Uruchomienie bota Discord w głównym wątku
+        client.run(TOKEN)
