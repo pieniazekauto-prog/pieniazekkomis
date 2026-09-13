@@ -8,7 +8,7 @@ from datetime import datetime
 # ==============================================================================
 import os
 
-TOKEN = os.getenv("MTU0ODY4Njc1NTA2MDc3NzA5Mg.GC791G.pgGVADy4_ZND7xMw9iEh-U7RGQNpTqbyRMWiAU")
+TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = 1503007115956977706               # ID Twojego serwera
 
 # ROLOWE UPRAWNIENIA
