@@ -2,12 +2,11 @@ import discord
 from discord import app_commands, Interaction, ButtonStyle
 from discord.ui import Modal, TextInput, View, Select, button
 from datetime import datetime
+import os
 
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-import os
-
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = 1503007115956977706               # ID Twojego serwera
 
@@ -82,7 +81,6 @@ class MandatReasonSelect(Select):
 
         kwota = kwoty_mapa.get(powod_wybrany, "Do ustalenia")
 
-        # Tworzenie publicznego Embedu
         embed = discord.Embed(
             title="⚖️ MANDAT BCD • KOMISY",
             color=discord.Color.gold(),
@@ -97,10 +95,7 @@ class MandatReasonSelect(Select):
         embed.add_field(name="⏰ Czas na zapłatę", value="**24 godziny** od momentu wystawienia.", inline=False)
         embed.set_footer(text="System Mandatów BCD • Pieniążek Auto", icon_url=interaction.client.user.display_avatar.url if interaction.client.user else None)
 
-        # 1. Zamykamy ukryte menu dla wywołującego
         await interaction.response.edit_message(content="✅ Mandat został pomyślnie wystawiony na kanale!", view=None)
-
-        # 2. Wysyłamy PUBLICZNIE mandat na kanał
         await interaction.channel.send(content=f"{self.ukarany.mention}", embed=embed)
 
 
@@ -212,7 +207,6 @@ client = MyClient()
 # KOMENDY SLASH Z UPRAWNIENIAMI
 # ==============================================================================
 
-# 1. Komenda /wypowiedzenie (Dla Pracowników)
 @client.tree.command(name="wypowiedzenie", description="Złóż oficjalne wypowiedzenie ze stanowiska")
 async def wypowiedzenie(interaction: Interaction):
     if not is_pracownik(interaction.user):
@@ -222,7 +216,6 @@ async def wypowiedzenie(interaction: Interaction):
     await interaction.response.send_modal(WypowiedzenieModal())
 
 
-# 2. System Zarządzania Kadrami (/zarzadzaj) (Tylko dla Zarządu)
 @client.tree.command(name="zarzadzaj", description="Panel zarządzania pracownikiem (Tylko dla Zarządu)")
 @app_commands.choices(akcja=[
     app_commands.Choice(name="⬆️ Awans", value="awans"),
@@ -305,7 +298,6 @@ async def zarzadzaj(interaction: Interaction, pracownik: discord.Member, akcja: 
         )
 
 
-# 3. Komenda Raportu Sprzedaży (/raport) (Dla Pracowników)
 @client.tree.command(name="raport", description="Zgłoś raport ze sprzedaży pojazdu")
 async def raport(interaction: Interaction, kwota: str, dowod: discord.Attachment):
     if not is_pracownik(interaction.user):
@@ -342,7 +334,6 @@ async def raport(interaction: Interaction, kwota: str, dowod: discord.Attachment
     )
 
 
-# 4. Komenda Mandatu BCD (/mandat) (Tylko dla Zarządu)
 @client.tree.command(name="mandat", description="Wystaw mandat pracownikowi (Tylko dla Zarządu)")
 async def mandat(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -364,4 +355,7 @@ async def mandat(interaction: Interaction, pracownik: discord.Member):
 async def on_ready():
     print(f"✅ Bot działa! Zalogowano jako: {client.user}")
 
-client.run(TOKEN)
+if TOKEN is None:
+    print("❌ BŁĄD: Brak zmiennej środowiskowej DISCORD_TOKEN! Ustaw ją w panelu Render.")
+else:
+    client.run(TOKEN)
