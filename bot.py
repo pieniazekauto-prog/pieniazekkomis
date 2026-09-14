@@ -1,4 +1,3 @@
-Proszę bardzo! Oto całkowicie gotowy, czysty kod wolny od błędnych cudzysłowów typograficznych (wszystkie stringi używają zwykłych " lub '). Możesz go bezpośrednio skopiować i wkleić do swojego pliku bot.py:
 from datetime import datetime
 import os
 import threading
