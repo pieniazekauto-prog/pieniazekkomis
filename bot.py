@@ -333,6 +333,7 @@ async def update_employee_list(guild: discord.Guild):
     if not channel:
         return
 
+    # Kolejność od NAJWYŻSZEJ do NAJNIŻSZEJ rangi (tak będą też wyświetlane)
     roles_config = [
         ("⟡ @👑 ⟡ Owner⟡", GRADE8_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", GRADE7_ROLE_ID),
@@ -349,6 +350,7 @@ async def update_employee_list(guild: discord.Guild):
     role_members_map = {}
     total_employees = set()
 
+    # Przypisujemy najpierw osoby z najwyższych rang, żeby uniknąć duplikatów
     for header, role_id in roles_config:
         role = guild.get_role(role_id)
         valid_members = []
