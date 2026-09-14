@@ -70,7 +70,7 @@ WELCOME_IMAGE_URL = (
 
 
 # ==============================================================================
-# HELPER FUNCTIONS (SPRAWDZANIE UPRAWNIEŃ)
+# HELPER FUNCTIONS (SPRAWDZANIE UPRAWNIEŃ I RANG)
 # ==============================================================================
 def is_zarzad(user: discord.Member) -> bool:
   return (
@@ -326,7 +326,7 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# SYSTEM ZARZĄDZANIA PODANIAMI (Z AKCEPTACJĄ I NADANIEM ROLI)
+# SYSTEM ZARZĄDZANIA PODANIAMI
 # ==============================================================================
 class PodanieZarzadView(View):
 
@@ -416,7 +416,7 @@ class PodanieZarzadView(View):
 
 
 # ==============================================================================
-# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU
+# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU (NAPRAWIONY)
 # ==============================================================================
 class PowodHRModal(Modal):
 
@@ -432,7 +432,7 @@ class PowodHRModal(Modal):
     self.powod_input = TextInput(
         label="Powód",
         placeholder=(
-            "Wpisz szczegółowy powód awansu/degradacji..."
+            "Wpisz szczegółowy powód awansu..."
             if action_type == "awans"
             else "Wpisz szczegółowy powód degradacji..."
         ),
@@ -444,20 +444,18 @@ class PowodHRModal(Modal):
 
   async def on_submit(self, interaction: Interaction):
     powod_tekst = self.powod_input.value
+    current_index = get_current_grade_index(self.pracownik)
+
+    if current_index == -1:
+      return await interaction.response.send_message(
+          f"❌ Użytkownik {self.pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!",
+          ephemeral=True,
+      )
 
     if self.action_type == "awans":
-      current_index = get_current_grade_index(self.pracownik)
-      if current_index == -1:
-        return await interaction.response.send_message(
-            f"❌ Użytkownik {self.pracownik.mention} nie posiada żadnej oficjalnej rangi"
-            " pracowniczej!",
-            ephemeral=True,
-        )
-
       if current_index + 1 >= len(GRADES):
         return await interaction.response.send_message(
-            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najwyższą** możliwą"
-            " rangę!",
+            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najwyższą** możliwą rangę!",
             ephemeral=True,
         )
 
@@ -468,21 +466,19 @@ class PowodHRModal(Modal):
       new_role = interaction.guild.get_role(new_role_id)
 
       try:
-        if old_role:
+        if old_role and old_role in self.pracownik.roles:
           await self.pracownik.remove_roles(old_role)
-        await self.pracownik.add_roles(new_role)
+        if new_role:
+          await self.pracownik.add_roles(new_role)
       except discord.Forbidden:
         return await interaction.response.send_message(
-            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!",
+            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika! Upewnij się, że rola bota jest wyżej niż role pracowników.",
             ephemeral=True,
         )
 
       embed = discord.Embed(
           title="🟢 OFICJALNY AWANS PRACOWNIKA",
-          description=(
-              f"Gratulacje dla pracownika {self.pracownik.mention} za świetną pracę i"
-              " zaangażowanie!"
-          ),
+          description=f"Gratulacje dla pracownika {self.pracownik.mention} za świetną pracę i zaangażowanie!",
           color=discord.Color.green(),
           timestamp=datetime.now(),
       )
@@ -506,9 +502,7 @@ class PowodHRModal(Modal):
           name="🚀 Nowa Ranga", value=f"**{new_role.name}**", inline=False
       )
       embed.add_field(
-          name="📌 Powód Awansu",
-          value=f"```\n{powod_tekst}\n```",
-          inline=False,
+          name="📌 Powód Awansu", value=f"```\n{powod_tekst}\n```", inline=False
       )
       embed.set_footer(
           text="Pieniążek Auto OSLORP • System Kadr",
@@ -521,24 +515,14 @@ class PowodHRModal(Modal):
       if log_channel:
         await log_channel.send(content=f"{self.pracownik.mention}", embed=embed)
       await interaction.response.send_message(
-          f"✅ Pomyślnie awansowano pracownika {self.pracownik.mention} na stanowisko"
-          f" **{new_role.name}**!",
+          f"✅ Pomyślnie awansowano pracownika {self.pracownik.mention} na stanowisko **{new_role.name}**!",
           ephemeral=True,
       )
 
     elif self.action_type == "degrad":
-      current_index = get_current_grade_index(self.pracownik)
-      if current_index == -1:
-        return await interaction.response.send_message(
-            f"❌ Użytkownik {self.pracownik.mention} nie posiada żadnej oficjalnej rangi"
-            " pracowniczej!",
-            ephemeral=True,
-        )
-
       if current_index - 1 < 0:
         return await interaction.response.send_message(
-            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najniższą** możliwą"
-            " rangę!",
+            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najniższą** możliwą rangę!",
             ephemeral=True,
         )
 
@@ -549,21 +533,19 @@ class PowodHRModal(Modal):
       new_role = interaction.guild.get_role(new_role_id)
 
       try:
-        if old_role:
+        if old_role and old_role in self.pracownik.roles:
           await self.pracownik.remove_roles(old_role)
-        await self.pracownik.add_roles(new_role)
+        if new_role:
+          await self.pracownik.add_roles(new_role)
       except discord.Forbidden:
         return await interaction.response.send_message(
-            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!",
+            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika! Upewnij się, że rola bota jest wyżej niż role pracowników.",
             ephemeral=True,
         )
 
       embed = discord.Embed(
           title="🟠 OFICJALNA DEGRADACJA PRACOWNIKA",
-          description=(
-              f"Pracownik {self.pracownik.mention} został zdegradowany z powodu"
-              " decyzji zarządu."
-          ),
+          description=f"Pracownik {self.pracownik.mention} został zdegradowany z powodu decyzji zarządu.",
           color=discord.Color.orange(),
           timestamp=datetime.now(),
       )
@@ -602,14 +584,13 @@ class PowodHRModal(Modal):
       if log_channel:
         await log_channel.send(content=f"{self.pracownik.mention}", embed=embed)
       await interaction.response.send_message(
-          f"✅ Pomyślnie zdegradowano pracownika {self.pracownik.mention} na stanowisko"
-          f" **{new_role.name}**!",
+          f"✅ Pomyślnie zdegradowano pracownika {self.pracownik.mention} na stanowisko **{new_role.name}**!",
           ephemeral=True,
       )
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY I TICKETÓW (SZARE / NEUTRALNE PRZYCISKI)
+# GŁÓWNY WIDOK POWITALNY I TICKETÓW
 # ==============================================================================
 class WelcomeTicketView(View):
 
@@ -736,9 +717,7 @@ class TicketCloseConfirmView(View):
       return await interaction.response.send_message(
           "❌ Tylko Zarząd może usunąć ten ticket!", ephemeral=True
       )
-    await interaction.response.send_message(
-        "🔒 Usuwanie kanału za 3 sekund..."
-    )
+    await interaction.response.send_message("🔒 Usuwanie kanału za 3 sekundy...")
     import asyncio
 
     await asyncio.sleep(3)
@@ -792,6 +771,40 @@ client = MyClient()
 @client.event
 async def on_ready():
   print(f"✅ Bot działa! Zalogowano jako: {client.user}")
+
+
+# ==============================================================================
+# AUTOMATYCZNE WYKRYWANIE NOWYCH OSÓB (POWITANIA)
+# ==============================================================================
+@client.event
+async def on_member_join(member: discord.Member):
+  if member.guild.id != GUILD_ID:
+    return
+
+  channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
+  if not channel:
+    return
+
+  embed = discord.Embed(
+      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
+      description=(
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "**Jak zacząć?**\n"
+          "• Użyj przycisku **✏️ Ustaw dane**, aby dopasować swój nick IC.\n"
+          "• Skorzystaj z zakładek poniżej w razie pytań lub chęci podjęcia"
+          " pracy.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
+      ),
+      color=discord.Color.gold(),
+  )
+  embed.set_thumbnail(url=member.display_avatar.url)
+  embed.set_image(url=WELCOME_IMAGE_URL)
+  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+
+  await channel.send(embed=embed, view=WelcomeTicketView())
 
 
 # ==============================================================================
