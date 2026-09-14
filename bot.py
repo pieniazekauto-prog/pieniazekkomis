@@ -345,19 +345,31 @@ async def update_employee_list(guild: discord.Guild):
         ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
     ]
 
-    desc_lines = []
+    assigned_members = set()
+    role_members_map = {}
     total_employees = set()
 
     for header, role_id in roles_config:
-        desc_lines.append(f"> # {header}")
         role = guild.get_role(role_id)
-        if role and role.members:
+        valid_members = []
+        if role:
             for m in role.members:
-                total_employees.add(m.id)
+                if m.id not in assigned_members:
+                    assigned_members.add(m.id)
+                    valid_members.append(m)
+                    total_employees.add(m.id)
+        role_members_map[header] = valid_members
+
+    desc_lines = []
+    for header, role_id in roles_config:
+        desc_lines.append(f"> # {header}")
+        members = role_members_map.get(header, [])
+        if members:
+            for m in members:
                 desc_lines.append(f"- {m.display_name} | {m.mention}")
         else:
             desc_lines.append("-")
-        desc_lines.append("")  # Pusta linia dla czystości
+        desc_lines.append("")
 
     desc_lines.append(f"## Liczba pracowników: `{len(total_employees)}`")
 
@@ -395,7 +407,6 @@ class EmployeePanelView(View):
         )
 
 
-# System Opłat z wyszukiwarką przez modal
 class FeeSearchModal(Modal, title="Wyszukaj pracownika (Opłaty)"):
     search_query = TextInput(
         label="Imię, nazwisko lub wzmianka",
@@ -420,7 +431,6 @@ class FeeSearchModal(Modal, title="Wyszukaj pracownika (Opłaty)"):
                 ephemeral=True,
             )
 
-        # Znaleziono - przełączamy status pierwszej dopasowanej linii
         target_line = matched_lines[0]
         if "❌" in target_line:
             new_line = target_line.replace("❌", "✅")
@@ -726,7 +736,6 @@ class PodanieZarzadView(View):
         await interaction.response.edit_message(embed=embed, view=self)
         await update_employee_list(guild)
 
-        # Wiadomość z podmienionym ID kanału zgodnie z wytycznymi
         info_channel_mention = "<#1547357733626577027>"
         await interaction.channel.send(
             f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\nGratulacje {self.applicant.mention}! Twoje podanie"
