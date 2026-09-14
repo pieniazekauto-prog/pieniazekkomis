@@ -283,7 +283,7 @@ class ZarzadzajSelect(Select):
     guild = interaction.guild
 
     if akcja == "zwolnienie":
-      roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
+      roles_to_remove = [r for r in self.target_member.roles.values() if r.id in GRADES] # type: ignore
       try:
         if roles_to_remove:
           await self.target_member.remove_roles(*roles_to_remove)
@@ -302,7 +302,6 @@ class ZarzadzajSelect(Select):
         )
       return
 
-    # Dla awansu lub degradacji pokazujemy wybór konkretnej rangi
     view = GradeSelectView(self.target_member, akcja)
     await interaction.response.edit_message(
         content=(
@@ -346,7 +345,6 @@ class GradeSelect(Select):
       )
       return
 
-    # Usuwamy stare rangi z listy GRADES i dodajemy nową
     roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
 
     try:
@@ -643,7 +641,6 @@ class TicketCloseView(View):
   async def close_ticket(
       self, interaction: Interaction, button: discord.ui.Button
   ):
-    # Każdy może kliknąć "Zamknij", ale pojawia się potwierdzenie z wymrożonym ostatecznym usunięciem dla Zarządu
     view = TicketCloseConfirmView()
     await interaction.response.send_message(
         f"⚠️ {interaction.user.mention}, czy na pewno chcesz zamknąć ten"
@@ -711,6 +708,45 @@ async def setup_panel(interaction: Interaction):
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
       "✅ Panel strefy zarządu został wysłany!", ephemeral=True
+  )
+
+
+@client.tree.command(
+    name="testjoin",
+    description="Testuje powitanie dla wybranego użytkownika (Tylko dla Zarządu)",
+)
+async def testjoin(interaction: Interaction, member: discord.Member):
+  if not is_zarzad(interaction.user):
+    await interaction.response.send_message(
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    )
+    return
+
+  channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
+  if not channel:
+    await interaction.response.send_message(
+        "❌ Nie znaleziono kanału powitalnego!", ephemeral=True
+    )
+    return
+
+  embed = discord.Embed(
+      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
+      description=(
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
+      ),
+      color=discord.Color.gold(),
+  )
+  embed.set_thumbnail(url=member.display_avatar.url)
+  embed.set_image(url=WELCOME_IMAGE_URL)
+  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+
+  await channel.send(embed=embed, view=WelcomeTicketView())
+  await interaction.response.send_message(
+      f"✅ Wysłano testowe powitanie dla {member.mention}!", ephemeral=True
   )
 
 
