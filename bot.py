@@ -3,7 +3,7 @@ import os
 import threading
 import discord
 from discord import ButtonStyle, Interaction, app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import Button, Modal, Select, TextInput, View, button
 from flask import Flask
 
@@ -41,9 +41,7 @@ GRADE4_ROLE_ID = 1547342464963059885  # Specjalista
 GRADE3_ROLE_ID = 1548089007416545302  # Doświadczony
 GRADE2_ROLE_ID = 1547342288231862303  # Handlarz
 GRADE1_ROLE_ID = 1547341972484661318  # Świeżak
-OCHRONA_ROLE_ID = (
-    1547694612070666260  # Ochrona (dodatkowa ranga z listy opłat)
-)
+OCHRONA_ROLE_ID = 1547694612070666260  # Ochrona
 
 # Do sprawdzania indeksów awansów/degradacji (od najniższej do najwyższej)
 GRADES = [
@@ -351,20 +349,17 @@ async def update_employee_list(guild: discord.Guild):
     total_employees = set()
 
     for header, role_id in roles_config:
-        desc_lines.append(header)
+        desc_lines.append(f"> # {header}")
         role = guild.get_role(role_id)
-        if role:
-            members = [m for m in role.members]
-            if members:
-                for m in members:
-                    total_employees.add(m.id)
-                    desc_lines.append(f"{m.display_name} | {m.mention}")
-            else:
-                desc_lines.append("-")
+        if role and role.members:
+            for m in role.members:
+                total_employees.add(m.id)
+                desc_lines.append(f"- {m.display_name} | {m.mention}")
         else:
             desc_lines.append("-")
+        desc_lines.append("")  # Pusta linia dla czystości
 
-    desc_lines.append(f"⟡ Liczba pracowników: {len(total_employees)}")
+    desc_lines.append(f"## Liczba pracowników: `{len(total_employees)}`")
 
     embed = discord.Embed(
         title="✦ PIENIĄŻEK AUTO | LISTA PRACOWNIKÓW",
@@ -400,91 +395,63 @@ class EmployeePanelView(View):
         )
 
 
-# System Opłat Tygodniowych z przełącznikami
-class FeeItemSelect(Select):
+# System Opłat z wyszukiwarką przez modal
+class FeeSearchModal(Modal, title="Wyszukaj pracownika (Opłaty)"):
+    search_query = TextInput(
+        label="Imię, nazwisko lub wzmianka",
+        placeholder="Wpisz fragment nicku pracownika...",
+        required=True,
+    )
 
-    def __init__(self, guild: discord.Guild):
-        options = []
-        # Zbieramy pracowników z roli pracowniczej / świeżaka do listy opłat
-        role = guild.get_role(PRACOWNIK_ROLE_ID) or guild.get_role(
-            GRADE1_ROLE_ID
-        )
-        if role:
-            for m in role.members:
-                options.append(
-                    discord.SelectOption(
-                        label=m.display_name[:25],
-                        value=str(m.id),
-                        description=f"Przełącz status opłaty",
-                        emoji="💵",
-                    )
-                )
-        if not options:
-            options.append(
-                discord.SelectOption(
-                    label="Brak pracowników", value="none", emoji="❌"
-                )
-            )
-
-        super().__init__(
-            placeholder="Wybierz pracownika, aby zmienić status opłaty...",
-            min_values=1,
-            max_values=1,
-            options=options[:25],
-            custom_id="fee_member_select",
-        )
-
-    async def callback(self, interaction: Interaction):
-        if not is_zarzad(interaction.user):
-            return await interaction.response.send_message(
-                "❌ Brak uprawnień do zmiany opłat!", ephemeral=True
-            )
-
-        if self.values[0] == "none":
-            return await interaction.response.send_message(
-                "❌ Brak pracowników do edycji.", ephemeral=True
-            )
-
-        member_id = int(self.values[0])
-        target_member = interaction.guild.get_member(member_id)
-        if not target_member:
-            return await interaction.response.send_message(
-                "❌ Nie znaleziono użytkownika.", ephemeral=True
-            )
-
-        # Odczytujemy aktualną treść embeda i zmieniamy status danego pracownika
+    async def on_submit(self, interaction: Interaction):
+        query = self.search_query.value.lower().strip()
         embed = interaction.message.embeds[0]
         content = embed.description
 
-        mention_str = target_member.mention
-        if f"{mention_str} ✅" in content:
-            new_content = content.replace(
-                f"{mention_str} ✅", f"{mention_str} ❌"
-            )
-        elif f"{mention_str} ❌" in content:
-            new_content = content.replace(
-                f"{mention_str} ❌", f"{mention_str} ✅"
-            )
-        else:
-            # Jeśli nie było oznaczone, dodajemy na końcu lub przy nazwisku
-            new_content = (
-                content + f"\n- {target_member.display_name} | {mention_str} ✅"
+        lines = content.split("\n")
+        matched_lines = []
+        for line in lines:
+            if query in line.lower() and ("✅" in line or "❌" in line):
+                matched_lines.append(line)
+
+        if not matched_lines:
+            return await interaction.response.send_message(
+                f"❌ Nie znaleziono pracownika pasującego do: **{query}**",
+                ephemeral=True,
             )
 
-        embed.description = new_content
+        # Znaleziono - przełączamy status pierwszej dopasowanej linii
+        target_line = matched_lines[0]
+        if "❌" in target_line:
+            new_line = target_line.replace("❌", "✅")
+        else:
+            new_line = target_line.replace("✅", "❌")
+
+        embed.description = content.replace(target_line, new_line)
         await interaction.message.edit(embed=embed)
         await interaction.response.send_message(
-            f"✅ Zaktualizowano status opłaty dla pracownika"
-            f" {target_member.display_name}.",
+            f"✅ Zmieniono status dla pasującego wpisu:\n`{target_line}` ➡️"
+            f" `{new_line}`",
             ephemeral=True,
         )
 
 
 class FeesView(View):
 
-    def __init__(self, guild: discord.Guild):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(FeeItemSelect(guild))
+
+    @button(
+        label="🔍 Wyszukaj i zmień status opłaty",
+        style=ButtonStyle.primary,
+        custom_id="fee_search_btn",
+    )
+    async def search_fee(self, interaction: Interaction, button: Button):
+        if not is_zarzad(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Brak uprawnień do zmiany opłat!", ephemeral=True
+            )
+        await interaction.response.send_modal(FeeSearchModal())
 
 
 # ==============================================================================
@@ -757,12 +724,10 @@ class PodanieZarzadView(View):
             child.disabled = True
 
         await interaction.response.edit_message(embed=embed, view=self)
-
-        # Automatyczna aktualizacja listy pracowników po zatrudnieniu
         await update_employee_list(guild)
 
-        # Profesjonalna wiadomość z powiadomieniem zgodnie z wytycznymi
-        info_channel_mention = f"<#{EMPLOYEE_LIST_CHANNEL_ID}>"
+        # Wiadomość z podmienionym ID kanału zgodnie z wytycznymi
+        info_channel_mention = "<#1547357733626577027>"
         await interaction.channel.send(
             f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\nGratulacje {self.applicant.mention}! Twoje podanie"
             " zostało zaakceptowane. Zapoznaj się z dostępnymi informacjami"
@@ -1030,10 +995,25 @@ class MyClient(discord.Client):
         self.add_view(VerificationView())
         self.add_view(SetupPanelView())
         self.add_view(EmployeePanelView())
+        self.add_view(FeesView())
 
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
+        self.auto_refresh_loop.start()
+
+    @tasks.loop(minutes=10)
+    async def auto_refresh_loop(self):
+        guild = self.get_guild(GUILD_ID)
+        if guild:
+            try:
+                await update_employee_list(guild)
+            except Exception as e:
+                print(f"Błąd automatycznego odświeżania listy: {e}")
+
+    @auto_refresh_loop.before_loop
+    async def before_auto_refresh(self):
+        await self.wait_until_ready()
 
 
 client = MyClient()
@@ -1219,7 +1199,6 @@ async def panel_oplat(interaction: Interaction):
             "❌ Nie znaleziono kanału opłat!", ephemeral=True
         )
 
-    # Obliczanie aktualnego tygodnia (np. od poniedziałku do niedzieli)
     today = datetime.now()
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
@@ -1228,7 +1207,6 @@ async def panel_oplat(interaction: Interaction):
         f" {end_of_week.strftime('%d.%m.%Y')}"
     )
 
-    # Generowanie listy pracowników do opłat ze statusami domyślnymi ❌
     role = guild.get_role(PRACOWNIK_ROLE_ID) or guild.get_role(GRADE1_ROLE_ID)
     members_text = []
     if role:
@@ -1240,15 +1218,15 @@ async def panel_oplat(interaction: Interaction):
         description=(
             f"**Okres rozliczeniowy:** `{date_str}`\n\n"
             + ("\n".join(members_text) if members_text else "Brak pracowników.")
-            + "\n\n> *Wybierz pracownika z menu poniżej, aby zmienić jego status"
-            " opłaty (✅/❌).*"
+            + "\n\n> *Kliknij przycisk poniżej, aby wyszukać pracownika i"
+            " zmienić status opłaty.*"
         ),
         color=discord.Color.gold(),
         timestamp=datetime.now(),
     )
     embed.set_footer(text="© Pieniążek Auto OSLORP | System Opłat Tygodniowych")
 
-    await fees_channel.send(embed=embed, view=FeesView(guild))
+    await fees_channel.send(embed=embed, view=FeesView())
     await interaction.response.send_message(
         f"✅ Pomyślnie utworzono nowy panel opłat na kanale"
         f" {fees_channel.mention}!",
