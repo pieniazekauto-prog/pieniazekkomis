@@ -370,7 +370,7 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY
+# GŁÓWNY WIDOK POWITALNY I TICKETÓW
 # ==============================================================================
 class WelcomeTicketView(View):
 
@@ -378,50 +378,10 @@ class WelcomeTicketView(View):
     super().__init__(timeout=None)
 
   @button(
-      label="Gość",
-      style=ButtonStyle.secondary,
-      custom_id="status_gosc_btn",
-      emoji="👤",
-      disabled=True,
-      row=0,
-  )
-  async def status_gosc(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    pass
-
-  @button(
-      label="Ustaw dane",
-      style=ButtonStyle.secondary,
-      custom_id="ustaw_dane_modal_btn",
-      emoji="✏️",
-      row=0,
-  )
-  async def ustaw_dane(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    await interaction.response.send_modal(UstawDaneModal())
-
-  @button(
-      label="Podanie o pracę",
+      label="Skontaktuj się z Zarządem",
       style=ButtonStyle.blurple,
-      custom_id="ticket_job_btn",
-      emoji="📄",
-      row=1,
-  )
-  async def ticket_job(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    await self.create_ticket(
-        interaction, "podanie", "📄 ⟡ 𝐏𝐨𝐝𝐚𝐧𝐢𝐚", "Podanie o pracę"
-    )
-
-  @button(
-      label="Pomoc / Zarząd",
-      style=ButtonStyle.gray,
       custom_id="ticket_help_btn",
-      emoji="🛠️",
-      row=1,
+      emoji="👑",
   )
   async def ticket_help(
       self, interaction: Interaction, button: discord.ui.Button
@@ -473,6 +433,48 @@ class WelcomeTicketView(View):
     )
 
 
+class TicketCloseConfirmView(View):
+
+  def __init__(self):
+    super().__init__(timeout=60)
+
+  @button(
+      label="Potwierdź zamknięcie",
+      style=ButtonStyle.red,
+      custom_id="confirm_close_ticket",
+      emoji="✅",
+  )
+  async def confirm_close(
+      self, interaction: Interaction, button: discord.ui.Button
+  ):
+    if not is_zarzad(interaction.user):
+      await interaction.response.send_message(
+          "❌ Tylko Zarząd może ostatecznie potwierdzić i usunąć ten ticket!",
+          ephemeral=True,
+      )
+      return
+
+    await interaction.response.send_message(
+        "🔒 Ticket został ostatecznie zamknięty przez Zarząd. Usuwanie kanału"
+        " za 3 sekundy..."
+    )
+    import asyncio
+
+    await asyncio.sleep(3)
+    await interaction.channel.delete()
+
+  @button(
+      label="Anuluj", style=ButtonStyle.secondary, custom_id="cancel_close_ticket"
+  )
+  async def cancel_close(
+      self, interaction: Interaction, button: discord.ui.Button
+  ):
+    await interaction.message.delete()
+    await interaction.response.send_message(
+        "✅ Anulowano zamknięcie ticketu.", ephemeral=True
+    )
+
+
 class TicketCloseView(View):
 
   def __init__(self):
@@ -487,20 +489,14 @@ class TicketCloseView(View):
   async def close_ticket(
       self, interaction: Interaction, button: discord.ui.Button
   ):
-    # Sprawdzenie czy użytkownik zamykający ticket ma uprawnienia Zarządu
-    if not is_zarzad(interaction.user):
-      await interaction.response.send_message(
-          "❌ Tylko Zarząd może zamknąć/usunąć ten ticket!", ephemeral=True
-      )
-      return
-
+    # Każdy może kliknąć "Zamknij", ale pojawia się potwierdzenie z wymrożonym ostatecznym usunięciem dla Zarządu
+    view = TicketCloseConfirmView()
     await interaction.response.send_message(
-        "🔒 Ticket został zamknięty przez Zarząd. Usuwanie kanału za 3 sekundy..."
+        f"⚠️ {interaction.user.mention}, czy na pewno chcesz zamknąć ten"
+        " ticket?\n*Ostateczne usunięcie kanału wymaga rangi **Zarząd**.*",
+        view=view,
+        ephemeral=True,
     )
-    import asyncio
-
-    await asyncio.sleep(3)
-    await interaction.channel.delete()
 
 
 # ==============================================================================
@@ -532,34 +528,14 @@ async def on_ready():
   print(f"✅ Bot działa! Zalogowano jako: {client.user}")
 
 
-@client.event
-async def on_member_join(member: discord.Member):
-  channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
-  if channel:
-    embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
-        description=(
-            f"Siema {member.mention}! 🥂\n\n"
-            "> Właśnie przekroczyłeś próg\n"
-            "> najchętniej wybieranego komisu w\n"
-            "> mieście.\n\n"
-            "Ustaw swoje dane IC i baw się dobrze!"
-        ),
-        color=discord.Color.gold(),
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_image(url=WELCOME_IMAGE_URL)
-    embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
-
-    await channel.send(embed=embed, view=WelcomeTicketView())
-
-
 # ==============================================================================
 # KOMENDY SLASH Z UPRAWNIENIAMI
 # ==============================================================================
 @client.tree.command(
     name="setup_panel",
-    description="Wysłanie panelu powitalnego z przyciskami na kanał",
+    description=(
+        "Wysłanie panelu strefy zarządu z przyciskiem na ten kanał"
+    ),
 )
 async def setup_panel(interaction: Interaction):
   if not is_zarzad(interaction.user):
@@ -569,61 +545,20 @@ async def setup_panel(interaction: Interaction):
     return
 
   embed = discord.Embed(
-      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
+      title="👑 ⟡ STREFA ZARZĄDU • POMOC I WSPARCIE",
       description=(
-          "Witamy na oficjalnym serwerze komisu!\n\n"
-          "> Kliknij przycisk **'Ustaw dane'**, aby zmienić nick na swoje imię"
-          " i nazwisko IC.\n"
-          "> Skorzystaj z przycisków poniżej, aby złożyć podanie lub uzyskać"
-          " pomoc."
+          "Masz ważne pytania, sprawę do omówienia, potrzebujesz profesjonalnego"
+          " wsparcia lub chcesz skontaktować się bezpośrednio z Zarządem"
+          " Pieniążek Auto?\n\nKliknij przycisk poniżej, aby utworzyć prywatny"
+          " kanał zgłoszenia, na którym nasz zespół udzieli Ci pomocy."
       ),
       color=discord.Color.gold(),
   )
-  embed.set_image(url=WELCOME_IMAGE_URL)
-  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+  embed.set_footer(text="Support • Pieniążek Auto")
 
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
-      "✅ Panel został wysłany!", ephemeral=True
-  )
-
-
-@client.tree.command(
-    name="testjoin",
-    description="Testuje powitanie dla wybranego użytkownika (Tylko dla Zarządu)",
-)
-async def testjoin(interaction: Interaction, member: discord.Member):
-  if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
-    )
-    return
-
-  channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
-  if not channel:
-    await interaction.response.send_message(
-        "❌ Nie znaleziono kanału powitalnego!", ephemeral=True
-    )
-    return
-
-  embed = discord.Embed(
-      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
-      description=(
-          f"Siema {member.mention}! 🥂\n\n"
-          "> Właśnie przekroczyłeś próg\n"
-          "> najchętniej wybieranego komisu w\n"
-          "> mieście.\n\n"
-          "Ustaw swoje dane IC i baw się dobrze!"
-      ),
-      color=discord.Color.gold(),
-  )
-  embed.set_thumbnail(url=member.display_avatar.url)
-  embed.set_image(url=WELCOME_IMAGE_URL)
-  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
-
-  await channel.send(embed=embed, view=WelcomeTicketView())
-  await interaction.response.send_message(
-      f"✅ Wysłano testowe powitanie dla {member.mention}!", ephemeral=True
+      "✅ Panel strefy zarządu został wysłany!", ephemeral=True
   )
 
 
@@ -699,4 +634,3 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     client.run(TOKEN)
-
