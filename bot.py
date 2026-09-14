@@ -591,13 +591,12 @@ class WelcomeTicketView(View):
           description=(
               f"Witaj {interaction.user.mention} w strefie składania"
               " podania!\n\nProsimy o dokładne uzupełnienie poniższego wzoru:"
-              " wyslij swoje zgłoszenie w wiadomościach na tym kanale.\n\n"
+              " wyślij swoje zgłoszenie w wiadomościach na tym kanale.\n\n"
               "**WZÓR PODANIA:**\n"
-              "```text\n1. Imię i Nazwisko (IC):\n2. Wiek (OOC):\n3. Ile czasu"
-              " możesz poświęcić dziennie na grę?:\n4. Twoje doświadczenie w"
-              " komisach / frakcjach:\n5. Coś o sobie (krótka"
-              " charakterystyka):\n```\n\n*Po uzupełnieniu wzoru oczekuj na"
-              " odpowiedź zarządu.*"
+              "```text\n1. Imię:\n2. Nazwisko:\n3. Wiek:\n4. Mutacja:\n5. Stan"
+              " konta (zdjęcie):\n6. Ilość aut (zdjęcie):\n7. Czy pracowałeś"
+              " już kiedyś na komisie (jak tak to jakim):\n```\n\n*Po uzupełnieniu"
+              " wzoru oczekuj na odpowiedź zarządu.*"
           ),
           color=discord.Color.gold(),
           timestamp=datetime.now(),
@@ -908,4 +907,3 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     client.run(TOKEN)
-
