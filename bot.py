@@ -341,7 +341,7 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# PANEL TICKETÓW I WERYFIKACJI
+# WIDOKI DLA PANELI (WERYFIKACJA, PODANIA, POMOC)
 # ==============================================================================
 class WelcomeTicketView(View):
 
@@ -443,6 +443,59 @@ class WelcomeTicketView(View):
     )
 
 
+class PomocButtonView(View):
+
+  def __init__(self):
+    super().__init__(timeout=None)
+
+  @button(
+      label="Skontaktuj się z Zarządem",
+      style=ButtonStyle.blurple,
+      custom_id="setup_pomoc_btn",
+      emoji="👑",
+  )
+  async def contact_zarzad(
+      self, interaction: Interaction, button: discord.ui.Button
+  ):
+    guild = interaction.guild
+    category_name = "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮"
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        interaction.user: discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, read_message_history=True
+        ),
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, manage_channels=True
+        ),
+    }
+
+    category = discord.utils.get(guild.categories, name=category_name)
+    channel_name = f"pomoc-{interaction.user.name}"
+    ticket_channel = await guild.create_text_channel(
+        name=channel_name, overwrites=overwrites, category=category
+    )
+
+    close_view = TicketCloseView()
+    embed = discord.Embed(
+        title="👑 Kontakt z Zarządem • Pieniążek Auto",
+        description=(
+            f"Witaj {interaction.user.mention}!\nOpisz w czym możemy Ci pomóc."
+            " Członek Zarządu odpowie na Twoje zgłoszenie tak szybko, jak to"
+            " możliwe."
+        ),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+
+    await ticket_channel.send(
+        content=f"{interaction.user.mention}", embed=embed, view=close_view
+    )
+    await interaction.response.send_message(
+        f"Utworzono kanał kontaktu z zarządem: {ticket_channel.mention}",
+        ephemeral=True,
+    )
+
+
 class TicketCloseView(View):
 
   def __init__(self):
@@ -474,8 +527,9 @@ class MyClient(discord.Client):
     self.tree = app_commands.CommandTree(self)
 
   async def setup_hook(self):
-    # Rejestracja starych i nowych widoków bez limitu czasowego
+    # Rejestracja widoków do działania ciągłego
     self.add_view(WelcomeTicketView())
+    self.add_view(PomocButtonView())
     self.add_view(TicketCloseView())
 
     guild = discord.Object(id=GUILD_ID)
@@ -536,6 +590,98 @@ async def setup_panel(interaction: Interaction):
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
       "✅ Panel został wysłany!", ephemeral=True
+  )
+
+
+@client.tree.command(
+    name="setuppodania",
+    description=(
+        "Wysyła elegancki embed z informacjami i wzorem podania na kanał"
+    ),
+)
+async def setuppodania(interaction: Interaction):
+  if not is_zarzad(interaction.user):
+    await interaction.response.send_message(
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    )
+    return
+
+  embed = discord.Embed(
+      title="📄 REKRUTACJA DO PIENIĄŻEK AUTO • OSLORP",
+      description=(
+          "Marzy Ci się praca w naszym zespole? Chcesz dołączyć do dynamicznie"
+          " rozwijającego się komisu i zarabiać świetne pieniądze? Złóż swoje"
+          " podanie już teraz!\n\n"
+          "📌 **Wzór podania:**\n"
+          "Skopiuj poniższy wzór, kliknij przycisk **'Podanie o pracę'**"
+          " poniżej lub w panelu zgłoszeń, a następnie wklej go na utworzonym"
+          " prywatnym kanale i uzupełnij wymagane informacje."
+      ),
+      color=discord.Color.gold(),
+      timestamp=datetime.now(),
+  )
+  embed.add_field(
+      name="📝 Wzór do skopiowania:",
+      value=(
+          "```text\n"
+          "Imię:\n"
+          "Nazwisko:\n"
+          "Wiek:\n"
+          "Mutacja:\n"
+          "Stan konta (zdjęcie):\n"
+          "Ilość aut (zdjęcie):\n"
+          "Czy pracowałeś już kiedyś na komisie (jak tak to jakim):\n"
+          "```"
+      ),
+      inline=False,
+  )
+  embed.set_footer(
+      text="Rekrutacja • Pieniążek Auto",
+      icon_url=(
+          client.user.display_avatar.url if client.user else None
+      ),
+  )
+
+  await interaction.channel.send(embed=embed, view=WelcomeTicketView())
+  await interaction.response.send_message(
+      "✅ Panel rekrutacyjny ze wzorem został pomyślnie wysłany!",
+      ephemeral=True,
+  )
+
+
+@client.tree.command(
+    name="setuppomoc",
+    description="Wysyła profesjonalny panel kontaktu z zarządem",
+)
+async def setuppomoc(interaction: Interaction):
+  if not is_zarzad(interaction.user):
+    await interaction.response.send_message(
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    )
+    return
+
+  embed = discord.Embed(
+      title="👑 STREFA ZARZĄDU • POMOC I WSPARCIE",
+      description=(
+          "Masz ważne pytania, sprawę do omówienia, potrzebujesz profesjonalnego"
+          " wsparcia lub chcesz skontaktować się bezpośrednio z Zarządem"
+          " **Pieniążek Auto**?\n\nKliknij przycisk poniżej, aby utworzyć"
+          " prywatny kanał zgłoszenia, na którym nasz zespół udzieli Ci"
+          " pomocy."
+      ),
+      color=discord.Color.gold(),
+      timestamp=datetime.now(),
+  )
+  embed.set_footer(
+      text="Support • Pieniążek Auto",
+      icon_url=(
+          client.user.display_avatar.url if client.user else None
+      ),
+  )
+
+  await interaction.channel.send(embed=embed, view=PomocButtonView())
+  await interaction.response.send_message(
+      "✅ Panel pomocy został pomyślnie wysłany!", ephemeral=True
   )
 
 
