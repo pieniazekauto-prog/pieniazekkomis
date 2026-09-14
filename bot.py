@@ -211,14 +211,10 @@ class MandatReasonSelect(Select):
         name="👑 Wystawił", value=f"{self.wystawiajacy.mention}", inline=True
     )
     embed.add_field(
-        name="📌 Powód Mandatu",
-        value=f"```\n{powod_wybrany}\n```",
-        inline=False,
+        name="📌 Powód Mandatu", value=f"```\n{powod_wybrany}\n```", inline=False
     )
     embed.add_field(
-        name="💰 Kwota Do Zapłaty",
-        value=f"```css\n[{kwota}]\n```",
-        inline=False,
+        name="💰 Kwota Do Zapłaty", value=f"```css\n[{kwota}]\n```", inline=False
     )
     embed.add_field(
         name="⏰ Czas na zapłatę",
@@ -416,7 +412,7 @@ class PodanieZarzadView(View):
 
 
 # ==============================================================================
-# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU (NAPRAWIONY)
+# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU
 # ==============================================================================
 class PowodHRModal(Modal):
 
