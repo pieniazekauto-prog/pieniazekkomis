@@ -52,6 +52,16 @@ GRADES = [
     GRADE8_ROLE_ID,
 ]
 
+GRADE_NAMES = {
+    GRADE1_ROLE_ID: "Świeżak",
+    GRADE2_ROLE_ID: "Handlarz",
+    GRADE3_ROLE_ID: "Doświadczony",
+    GRADE4_ROLE_ID: "Specjalista",
+    GRADE6_ROLE_ID: "Kierownik",
+    GRADE7_ROLE_ID: "Manager",
+    GRADE8_ROLE_ID: "Co Owner",
+}
+
 # KONFIGURACJA WERYFIKACJI I KANAŁÓW POWITALNYCH
 VERIFY_ROLE_ID = 1503009366985408553
 WELCOME_CHANNEL_ID = 1503013291197202432
@@ -232,6 +242,150 @@ class MandatView(View):
   def __init__(self, ukarany: discord.Member, wystawiajacy: discord.Member):
     super().__init__(timeout=60)
     self.add_item(MandatReasonSelect(ukarany, wystawiajacy))
+
+
+# ==============================================================================
+# SYSTEM ZARZĄDZANIA KADRAMI (KOMENDA /ZARZĄDZAJ - AWANS / DEGRAD / ZWOLNIENIE)
+# ==============================================================================
+class ZarzadzajSelect(Select):
+
+  def __init__(self, target_member: discord.Member):
+    self.target_member = target_member
+    options = [
+        discord.SelectOption(
+            label="📈 Awans",
+            value="awans",
+            description="Awansuj pracownika na wyższe stanowisko",
+            emoji="🟢",
+        ),
+        discord.SelectOption(
+            label="📉 Degrad",
+            value="degrad",
+            description="Degraduj pracownika na niższe stanowisko",
+            emoji="🟠",
+        ),
+        discord.SelectOption(
+            label="❌ Zwolnienie",
+            value="zwolnienie",
+            description="Usuń pracownika z komisu (odeberz rangi)",
+            emoji="🔴",
+        ),
+    ]
+    super().__init__(
+        placeholder="Wybierz akcję zarządzania pracownikiem...",
+        min_values=1,
+        max_values=1,
+        options=options,
+    )
+
+  async def callback(self, interaction: Interaction):
+    akcja = self.values[0]
+    guild = interaction.guild
+
+    if akcja == "zwolnienie":
+      roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
+      try:
+        if roles_to_remove:
+          await self.target_member.remove_roles(*roles_to_remove)
+        await interaction.response.edit_message(
+            content=(
+                f"❌ Pracownik {self.target_member.mention} został zwolniony i"
+                " odebrano mu rangi pracownicze przez"
+                f" {interaction.user.mention}."
+            ),
+            view=None,
+        )
+      except discord.Forbidden:
+        await interaction.response.edit_message(
+            content="⚠️ Bot nie ma uprawnień do edycji ról tego użytkownika!",
+            view=None,
+        )
+      return
+
+    # Dla awansu lub degradacji pokazujemy wybór konkretnej rangi
+    view = GradeSelectView(self.target_member, akcja)
+    await interaction.response.edit_message(
+        content=(
+            f"Wybierz docelową rangę dla {self.target_member.mention} w"
+            f" ramach operacji **{akcja.upper()}**:"
+        ),
+        view=view,
+    )
+
+
+class GradeSelect(Select):
+
+  def __init__(self, target_member: discord.Member, akcja: str):
+    self.target_member = target_member
+    self.akcja = akcja
+
+    options = []
+    for g_id in GRADES:
+      g_name = GRADE_NAMES.get(g_id, f"Ranga {g_id}")
+      options.append(
+          discord.SelectOption(
+              label=g_name, value=str(g_id), description=f"Ranga ID: {g_id}"
+          )
+      )
+
+    super().__init__(
+        placeholder="Wybierz nową rangę stanowiska...",
+        min_values=1,
+        max_values=1,
+        options=options,
+    )
+
+  async def callback(self, interaction: Interaction):
+    new_role_id = int(self.values[0])
+    guild = interaction.guild
+    new_role = guild.get_role(new_role_id)
+
+    if not new_role:
+      await interaction.response.edit_message(
+          content="❌ Nie znaleziono wybranej rangi na serwerze!", view=None
+      )
+      return
+
+    # Usuwamy stare rangi z listy GRADES i dodajemy nową
+    roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
+
+    try:
+      if roles_to_remove:
+        await self.target_member.remove_roles(*roles_to_remove)
+      await self.target_member.add_roles(new_role)
+
+      akcja_pl = (
+          "Awansowano" if self.akcja == "awans" else "Dokonano degradacji"
+      )
+      await interaction.response.edit_message(
+          content=(
+              f"✅ {akcja_pl} pracownika {self.target_member.mention} na rangę"
+              f" **{new_role.name}** przez {interaction.user.mention}."
+          ),
+          view=None,
+      )
+    except discord.Forbidden:
+      await interaction.response.edit_message(
+          content=(
+              "⚠️ Bot nie ma uprawnień do zarządzania rolami tego"
+              " użytkownika!"
+          ),
+          view=None,
+      )
+
+
+class ZarzadzajView(View):
+
+  def __init__(self, target_member: discord.Member):
+    super().__init__(timeout=60)
+    self.add_item(ZarzadzajSelect(target_member))
+
+
+class GradeSelectView(View):
+
+  def __init__(self, target_member: discord.Member, akcja: str):
+    super().__init__(timeout=60)
+    self.add_item(GradeSelect(target_member, akcja))
 
 
 # ==============================================================================
@@ -533,9 +687,7 @@ async def on_ready():
 # ==============================================================================
 @client.tree.command(
     name="setup_panel",
-    description=(
-        "Wysłanie panelu strefy zarządu z przyciskiem na ten kanał"
-    ),
+    description="Wysłanie panelu strefy zarządu z przyciskiem na ten kanał",
 )
 async def setup_panel(interaction: Interaction):
   if not is_zarzad(interaction.user):
@@ -559,6 +711,25 @@ async def setup_panel(interaction: Interaction):
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
       "✅ Panel strefy zarządu został wysłany!", ephemeral=True
+  )
+
+
+@client.tree.command(
+    name="zarzadzaj",
+    description="Zarządzaj rangami pracownika (awans/degrad/zwolnienie)",
+)
+async def zarzadzaj(interaction: Interaction, pracownik: discord.Member):
+  if not is_zarzad(interaction.user):
+    await interaction.response.send_message(
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    )
+    return
+
+  view = ZarzadzajView(target_member=pracownik)
+  await interaction.response.send_message(
+      f"⚙️ Wybierz akcję dla pracownika {pracownik.mention}:",
+      view=view,
+      ephemeral=True,
   )
 
 
