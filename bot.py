@@ -52,6 +52,16 @@ GRADES = [
     GRADE8_ROLE_ID,
 ]
 
+GRADE_NAMES = {
+    GRADE1_ROLE_ID: "Świeżak",
+    GRADE2_ROLE_ID: "Handlarz",
+    GRADE3_ROLE_ID: "Doświadczony",
+    GRADE4_ROLE_ID: "Specjalista",
+    GRADE6_ROLE_ID: "Kierownik",
+    GRADE7_ROLE_ID: "Manager",
+    GRADE8_ROLE_ID: "Co Owner",
+}
+
 WELCOME_CHANNEL_ID = 1503013291197202432
 AWANS_LOG_CHANNEL_ID = 1503394099661639680  # Dedykowany kanał na awansy, degrady i zwolnienia
 WELCOME_IMAGE_URL = (
@@ -60,7 +70,7 @@ WELCOME_IMAGE_URL = (
 
 
 # ==============================================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS (SPRAWDZANIE UPRAWNIEŃ I RANG)
 # ==============================================================================
 def is_zarzad(user: discord.Member) -> bool:
   return (
@@ -181,34 +191,37 @@ class MandatReasonSelect(Select):
     kwota = kwoty_mapa.get(powod_wybrany, "Do ustalenia")
 
     embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO | SYSTEM MANDATÓW",
-        description=f"Nałożono oficjalny mandat dyscyplinarny na pracownika {self.ukarany.mention}.",
+        title="⚖️ MANDAT BCD • KOMISY",
         color=discord.Color.gold(),
         timestamp=datetime.now(),
     )
-    embed.set_thumbnail(url=self.ukarany.display_avatar.url)
-    embed.add_field(
-        name="👤 Ukarany",
-        value=f"{self.ukarany.mention}\n`ID: {self.ukarany.id}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="👑 Wystawiający",
-        value=f"{self.wystawiajacy.mention}",
-        inline=True,
-    )
-    embed.add_field(
-        name="📌 Powód", value=f"```text\n{powod_wybrany}\n```", inline=False
-    )
-    embed.add_field(
-        name="💰 Kwota do zapłaty", value=f"```css\n[{kwota}]\n```", inline=False
-    )
-    embed.set_footer(
-        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+    embed.set_author(
+        name=f"💰 | {interaction.guild.name} | Komis | OsloRP",
         icon_url=(
             interaction.guild.icon.url if interaction.guild.icon else None
         ),
     )
+    embed.set_thumbnail(url=self.ukarany.display_avatar.url)
+    embed.add_field(
+        name="👤 Ukarany Pracownik",
+        value=f"{self.ukarany.mention}\n`ID: {self.ukarany.id}`",
+        inline=True,
+    )
+    embed.add_field(
+        name="👑 Wystawił", value=f"{self.wystawiajacy.mention}", inline=True
+    )
+    embed.add_field(
+        name="📌 Powód Mandatu", value=f"```\n{powod_wybrany}\n```", inline=False
+    )
+    embed.add_field(
+        name="💰 Kwota Do Zapłaty", value=f"```css\n[{kwota}]\n```", inline=False
+    )
+    embed.add_field(
+        name="⏰ Czas na zapłatę",
+        value="**24 godziny** od momentu wystawienia.",
+        inline=False,
+    )
+    embed.set_footer(text="System Mandatów BCD • Pieniążek Auto")
 
     await interaction.response.edit_message(
         content="✅ Mandat został pomyślnie wystawiony na kanale!", view=None
@@ -240,30 +253,18 @@ class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
 
   async def on_submit(self, interaction: Interaction):
     embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO | WNIOSEK O WYPOWIEDZENIE",
-        description=f"Pracownik {interaction.user.mention} złożył wniosek o rozwiązanie umowy.",
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
+        title="✨ NOWE WYPOWIEDZENIE", color=discord.Color.gold()
     )
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+    embed.add_field(name="👤 Pracownik", value=f"{interaction.user.mention}")
+    embed.add_field(name="💼 Stanowisko", value=f"{self.stanowisko.value}")
     embed.add_field(
-        name="👤 Pracownik",
-        value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
-        inline=True,
+        name="📝 Powód", value=f"```\n{self.powod.value}\n```", inline=False
     )
     embed.add_field(
-        name="💼 Stanowisko", value=f"`{self.stanowisko.value}`", inline=True
-    )
-    embed.add_field(
-        name="📝 Powód", value=f"```text\n{self.powod.value}\n```", inline=False
-    )
-    embed.add_field(
-        name="📊 Status",
-        value="⏳ **Oczekuje na decyzję Zarządu**",
+        name="📊 Status Decyzji",
+        value="⏳ **Oczekuje na rozpatrzenie**",
         inline=False,
     )
-    embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
-
     view = DecyzjaZarzaduView(target_member=interaction.user)
     await interaction.response.send_message(embed=embed, view=view)
 
@@ -292,12 +293,12 @@ class DecyzjaZarzaduView(View):
     except:
       pass
     embed = interaction.message.embeds[0]
-    embed.color = discord.Color.green()
     embed.add_field(
-        name="📊 Status",
+        name="📊 Status Decyzji",
         value=f"✅ **Zatwierdzone przez {interaction.user.mention}**",
         inline=False,
     )
+    embed.color = discord.Color.green()
     for child in self.children:
       child.disabled = True
     await interaction.response.edit_message(embed=embed, view=self)
@@ -309,12 +310,12 @@ class DecyzjaZarzaduView(View):
           "❌ Brak uprawnień!", ephemeral=True
       )
     embed = interaction.message.embeds[0]
-    embed.color = discord.Color.red()
     embed.add_field(
-        name="📊 Status",
+        name="📊 Status Decyzji",
         value=f"❌ **Odrzucono przez {interaction.user.mention}**",
         inline=False,
     )
+    embed.color = discord.Color.red()
     for child in self.children:
       child.disabled = True
     await interaction.response.edit_message(embed=embed, view=self)
@@ -351,11 +352,13 @@ class PodanieZarzadView(View):
         roles_to_add.append(swiezak_role)
       if pracownik_role:
         roles_to_add.append(pracownik_role)
+
       if roles_to_add:
         await self.applicant.add_roles(*roles_to_add)
     except discord.Forbidden:
       return await interaction.response.send_message(
-          "⚠️ Bot nie posiada uprawnień do nadania ról!", ephemeral=True
+          "⚠️ Bot nie posiada uprawnień do nadania ról temu użytkownikowi!",
+          ephemeral=True,
       )
 
     embed = interaction.message.embeds[0]
@@ -363,18 +366,19 @@ class PodanieZarzadView(View):
     embed.add_field(
         name="📊 Status Podania",
         value=(
-            f"✅ **Zatwierdzone przez {interaction.user.mention}**\nNadano rangę:"
-            f" `{swiezak_role.name if swiezak_role else 'Świeżak'}`"
+            f"✅ **Zatwierdzone i przyjęte przez {interaction.user.mention}**\nNadano"
+            f" rangę: `{swiezak_role.name if swiezak_role else 'Świeżak'}`"
         ),
         inline=False,
     )
+
     for child in self.children:
       child.disabled = True
 
     await interaction.response.edit_message(embed=embed, view=self)
     await interaction.channel.send(
         f"🎉 Gratulacje {self.applicant.mention}! Twoje podanie zostało"
-        " **zaakceptowane**."
+        " **zaakceptowane**. Witamy w zespole Pieniążek Auto!"
     )
 
   @button(
@@ -396,13 +400,14 @@ class PodanieZarzadView(View):
         value=f"❌ **Odrzucone przez {interaction.user.mention}**",
         inline=False,
     )
+
     for child in self.children:
       child.disabled = True
 
     await interaction.response.edit_message(embed=embed, view=self)
     await interaction.channel.send(
         f"❌ Przykro nam {self.applicant.mention}, Twoje podanie zostało"
-        " odrzucone."
+        " niestety odrzucone."
     )
 
 
@@ -422,7 +427,11 @@ class PowodHRModal(Modal):
 
     self.powod_input = TextInput(
         label="Powód",
-        placeholder="Wpisz szczegółowy powód...",
+        placeholder=(
+            "Wpisz szczegółowy powód awansu..."
+            if action_type == "awans"
+            else "Wpisz szczegółowy powód degradacji..."
+        ),
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=1000,
@@ -435,18 +444,22 @@ class PowodHRModal(Modal):
 
     if current_index == -1:
       return await interaction.response.send_message(
-          f"❌ Użytkownik {self.pracownik.mention} nie posiada rangi pracowniczej!",
+          f"❌ Użytkownik {self.pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!",
           ephemeral=True,
       )
 
     if self.action_type == "awans":
       if current_index + 1 >= len(GRADES):
         return await interaction.response.send_message(
-            f"⚠️ Pracownik ma już najwyższą rangę!", ephemeral=True
+            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najwyższą** możliwą rangę!",
+            ephemeral=True,
         )
 
-      old_role = interaction.guild.get_role(GRADES[current_index])
-      new_role = interaction.guild.get_role(GRADES[current_index + 1])
+      old_role_id = GRADES[current_index]
+      new_role_id = GRADES[current_index + 1]
+
+      old_role = interaction.guild.get_role(old_role_id)
+      new_role = interaction.guild.get_role(new_role_id)
 
       try:
         if old_role and old_role in self.pracownik.roles:
@@ -455,13 +468,14 @@ class PowodHRModal(Modal):
           await self.pracownik.add_roles(new_role)
       except discord.Forbidden:
         return await interaction.response.send_message(
-            "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
+            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika! Upewnij się, że rola bota jest wyżej niż role pracowników.",
+            ephemeral=True,
         )
 
       embed = discord.Embed(
-          title="✦ PIENIĄŻEK AUTO | OFICJALNY AWANS",
-          description=f"Pracownik {self.pracownik.mention} awansował w hierarchii komisu.",
-          color=discord.Color.gold(),
+          title="🟢 OFICJALNY AWANS PRACOWNIKA",
+          description=f"Gratulacje dla pracownika {self.pracownik.mention} za świetną pracę i zaangażowanie!",
+          color=discord.Color.green(),
           timestamp=datetime.now(),
       )
       embed.set_thumbnail(url=self.pracownik.display_avatar.url)
@@ -471,7 +485,9 @@ class PowodHRModal(Modal):
           inline=True,
       )
       embed.add_field(
-          name="👑 Decyzja", value=f"{interaction.user.mention}", inline=True
+          name="👑 Decyzja Zarządu",
+          value=f"{interaction.user.mention}",
+          inline=True,
       )
       embed.add_field(
           name="📈 Poprzednia Ranga",
@@ -482,10 +498,10 @@ class PowodHRModal(Modal):
           name="🚀 Nowa Ranga", value=f"**{new_role.name}**", inline=False
       )
       embed.add_field(
-          name="📌 Powód Awansu", value=f"```text\n{powod_tekst}\n```", inline=False
+          name="📌 Powód Awansu", value=f"```\n{powod_tekst}\n```", inline=False
       )
       embed.set_footer(
-          text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+          text="Pieniążek Auto OSLORP • System Kadr",
           icon_url=(
               interaction.guild.icon.url if interaction.guild.icon else None
           ),
@@ -495,18 +511,22 @@ class PowodHRModal(Modal):
       if log_channel:
         await log_channel.send(content=f"{self.pracownik.mention}", embed=embed)
       await interaction.response.send_message(
-          f"✅ Pomyślnie awansowano pracownika na **{new_role.name}**!",
+          f"✅ Pomyślnie awansowano pracownika {self.pracownik.mention} na stanowisko **{new_role.name}**!",
           ephemeral=True,
       )
 
     elif self.action_type == "degrad":
       if current_index - 1 < 0:
         return await interaction.response.send_message(
-            f"⚠️ Pracownik ma już najniższą rangę!", ephemeral=True
+            f"⚠️ Pracownik {self.pracownik.mention} posiada już **najniższą** możliwą rangę!",
+            ephemeral=True,
         )
 
-      old_role = interaction.guild.get_role(GRADES[current_index])
-      new_role = interaction.guild.get_role(GRADES[current_index - 1])
+      old_role_id = GRADES[current_index]
+      new_role_id = GRADES[current_index - 1]
+
+      old_role = interaction.guild.get_role(old_role_id)
+      new_role = interaction.guild.get_role(new_role_id)
 
       try:
         if old_role and old_role in self.pracownik.roles:
@@ -515,13 +535,14 @@ class PowodHRModal(Modal):
           await self.pracownik.add_roles(new_role)
       except discord.Forbidden:
         return await interaction.response.send_message(
-            "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
+            "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika! Upewnij się, że rola bota jest wyżej niż role pracowników.",
+            ephemeral=True,
         )
 
       embed = discord.Embed(
-          title="✦ PIENIĄŻEK AUTO | OFICJALNA DEGRADACJA",
-          description=f"Pracownik {self.pracownik.mention} został zdegradowany.",
-          color=discord.Color.gold(),
+          title="🟠 OFICJALNA DEGRADACJA PRACOWNIKA",
+          description=f"Pracownik {self.pracownik.mention} został zdegradowany z powodu decyzji zarządu.",
+          color=discord.Color.orange(),
           timestamp=datetime.now(),
       )
       embed.set_thumbnail(url=self.pracownik.display_avatar.url)
@@ -531,7 +552,9 @@ class PowodHRModal(Modal):
           inline=True,
       )
       embed.add_field(
-          name="👑 Decyzja", value=f"{interaction.user.mention}", inline=True
+          name="👑 Decyzja Zarządu",
+          value=f"{interaction.user.mention}",
+          inline=True,
       )
       embed.add_field(
           name="📉 Poprzednia Ranga",
@@ -543,11 +566,11 @@ class PowodHRModal(Modal):
       )
       embed.add_field(
           name="📌 Powód Degradacji",
-          value=f"```text\n{powod_tekst}\n```",
+          value=f"```\n{powod_tekst}\n```",
           inline=False,
       )
       embed.set_footer(
-          text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+          text="Pieniążek Auto OSLORP • System Kadr",
           icon_url=(
               interaction.guild.icon.url if interaction.guild.icon else None
           ),
@@ -557,7 +580,7 @@ class PowodHRModal(Modal):
       if log_channel:
         await log_channel.send(content=f"{self.pracownik.mention}", embed=embed)
       await interaction.response.send_message(
-          f"✅ Pomyślnie zdegradowano pracownika na **{new_role.name}**!",
+          f"✅ Pomyślnie zdegradowano pracownika {self.pracownik.mention} na stanowisko **{new_role.name}**!",
           ephemeral=True,
       )
 
@@ -629,18 +652,22 @@ class WelcomeTicketView(View):
 
     if mode == "podanie":
       embed = discord.Embed(
-          title="✦ PIENIĄŻEK AUTO | OFICJALNE PODANIE",
+          title="📄 OFICJALNE PODANIE O PRACĘ",
           description=(
-              f"Witaj {interaction.user.mention} w strefie podania!\n\nUzupełnij"
-              " poniższy wzór:\n```text\n1. Imię:\n2. Nazwisko:\n3. Wiek:\n4."
-              " Mutacja:\n5. Stan konta (zdjęcie):\n6. Ilość aut"
-              " (zdjęcie):\n7. SS dowodu osobistego (zdjęcie):\n8. Czy byłeś"
-              " karany:\n9. Doświadczenie w komisach:\n```"
+              f"Witaj {interaction.user.mention} w strefie składania"
+              " podania!\n\nProsimy o dokładne uzupełnienie poniższego wzoru:"
+              " wyślij swoje zgłoszenie w wiadomościach na tym kanale.\n\n"
+              "**WZÓR PODANIA:**\n"
+              "```text\n1. Imię:\n2. Nazwisko:\n3. Wiek:\n4. Mutacja:\n5. Stan"
+              " konta (zdjęcie):\n6. Ilość aut (zdjęcie):\n7. SS dowodu"
+              " osobistego (zdjęcie):\n8. Czy byłeś karany (jeśli tak, to za"
+              " co?):\n9. Czy pracowałeś już kiedyś na komisie (jeśli tak, to"
+              " jakim):\n```"
           ),
           color=discord.Color.gold(),
           timestamp=datetime.now(),
       )
-      embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+      embed.set_footer(text="Pieniążek Auto OSLORP • System Podaniowy")
       zarzad_view = PodanieZarzadView(applicant=interaction.user)
       await ticket_channel.send(
           content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
@@ -650,15 +677,17 @@ class WelcomeTicketView(View):
       )
     else:
       embed = discord.Embed(
-          title="✦ PIENIĄŻEK AUTO | STREFA POMOCY",
+          title="🛠️ POMOC / SUPPORT OOC",
           description=(
-              f"Witaj {interaction.user.mention}!\n\nOpisz dokładnie swój"
-              " problem lub sprawę. Zarząd odpowie najszybciej jak to możliwe."
+              f"Witaj {interaction.user.mention} w oficjalnym centrum"
+              " pomocy!\n\nOpisz dokładnie swoją sprawę, problem lub pytanie,"
+              " z którym przychodzisz. Zarząd odpowie najszybciej jak to"
+              " możliwe.\n\n*Prosimy o cierpliwość i wyrozumiałość.*"
           ),
           color=discord.Color.gold(),
           timestamp=datetime.now(),
       )
-      embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+      embed.set_footer(text="Pieniążek Auto OSLORP • System Supportu")
       await ticket_channel.send(
           content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
           embed=embed,
@@ -682,7 +711,7 @@ class TicketCloseConfirmView(View):
   async def confirm_close(self, interaction: Interaction, button: Button):
     if not is_zarzad(interaction.user):
       return await interaction.response.send_message(
-          "❌ Tylko Zarząd może usunąć ticket!", ephemeral=True
+          "❌ Tylko Zarząd może usunąć ten ticket!", ephemeral=True
       )
     await interaction.response.send_message("🔒 Usuwanie kanału za 3 sekundy...")
     import asyncio
@@ -693,7 +722,9 @@ class TicketCloseConfirmView(View):
   @button(label="Anuluj", style=ButtonStyle.secondary, custom_id="canc_close")
   async def cancel_close(self, interaction: Interaction, button: Button):
     await interaction.message.delete()
-    await interaction.response.send_message("✅ Anulowano.", ephemeral=True)
+    await interaction.response.send_message(
+        "✅ Anulowano.", ephemeral=True
+    )
 
 
 class TicketCloseView(View):
@@ -739,7 +770,7 @@ async def on_ready():
 
 
 # ==============================================================================
-# AUTOMATYCZNE POWITANIA
+# AUTOMATYCZNE WYKRYWANIE NOWYCH OSÓB (POWITANIA)
 # ==============================================================================
 @client.event
 async def on_member_join(member: discord.Member):
@@ -753,11 +784,15 @@ async def on_member_join(member: discord.Member):
   embed = discord.Embed(
       title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg\n>"
-          " najchętniej wybieranego komisu w\n> mieście.\n\n**Jak zacząć?**\n•"
-          " Użyj przycisku **✏️ Ustaw dane**, aby dopasować swój nick IC.\n•"
-          " Skorzystaj z zakładek poniżej w razie pytań lub chęci podjęcia"
-          " pracy."
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "**Jak zacząć?**\n"
+          "• Użyj przycisku **✏️ Ustaw dane**, aby dopasować swój nick IC.\n"
+          "• Skorzystaj z zakładek poniżej w razie pytań lub chęci podjęcia"
+          " pracy.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
       ),
       color=discord.Color.gold(),
   )
@@ -788,7 +823,8 @@ async def setup_panel(interaction: Interaction):
           "• Kliknij **✏️ Ustaw dane**, aby zaktualizować swoje imię i nazwisko"
           " IC.\n• Kliknij **📄 Podanie o pracę**, jeśli chcesz dołączyć do"
           " naszej ekipy.\n• Kliknij **🛠️ Pomoc / Zarząd**, aby skontaktować"
-          " się z kadrą zarządzającą."
+          " się z kadrą zarządzającą.\n\n"
+          "*Ustaw swoje dane IC i baw się dobrze!*"
       ),
       color=discord.Color.gold(),
   )
@@ -799,50 +835,60 @@ async def setup_panel(interaction: Interaction):
   await interaction.response.send_message("✅ Wysłano panel!", ephemeral=True)
 
 
-@client.tree.command(name="skip", description="Oznacza ticket jako w trakcie")
+@client.tree.command(
+    name="skip",
+    description="Oznacza ticket jako w trakcie rozpatrywania (prośba o SS dowodu i karalność)",
+)
 async def skip_ticket(interaction: Interaction):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
-        "❌ Brak uprawnień!", ephemeral=True
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
     )
 
   embed = discord.Embed(
-      title="✦ PIENIĄŻEK AUTO | STATUS PODANIA",
+      title="⏳ STATUS: W TRAKCIE ROZPATRYWANIA",
       description=(
-          "Twoje podanie jest aktualnie **w trakcie rozpatrywania**.\n\n📸"
-          " **Wymagane dodatkowo:**\n• Prześlij **screenshot dowodu"
-          " osobistego**.\n• Informacja, **czy byłeś karany**."
+          "Twoje podanie jest aktualnie **w trakcie rozpatrywania**. Prosimy"
+          " o cierpliwość i oczekiwanie na decyzję Zarządu.\n\n"
+          "📸 **Wymagane dodatkowo:**\n"
+          "• Prosimy o przesłanie **screenshotu dowodu osobistego**.\n"
+          "• Prosimy o informację na temat tego, **czy byłeś karany**."
       ),
-      color=discord.Color.gold(),
+      color=discord.Color.orange(),
       timestamp=datetime.now(),
   )
-  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+  embed.set_footer(text="Pieniążek Auto • System Podaniowy")
+
   await interaction.response.send_message(embed=embed)
 
 
 @client.tree.command(name="add", description="Dodaje użytkownika do ticketa")
+@app_commands.describe(member="Użytkownik, którego chcesz dodać")
 async def add_member(interaction: Interaction, member: discord.Member):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
-        "❌ Brak uprawnień!", ephemeral=True
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
     )
+
   await interaction.channel.set_permissions(
       member, view_channel=True, send_messages=True, read_message_history=True
   )
   await interaction.response.send_message(
-      f"✅ Pomyślnie dodano {member.mention} do ticketa."
+      f"✅ Pomyślnie dodano użytkownika {member.mention} do tego ticketa."
   )
 
 
 @client.tree.command(name="remove", description="Wyrzuca użytkownika z ticketa")
+@app_commands.describe(member="Użytkownik, którego chcesz wyrzucić")
 async def remove_member(interaction: Interaction, member: discord.Member):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
-        "❌ Brak uprawnień!", ephemeral=True
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
     )
+
   await interaction.channel.set_permissions(member, overwrite=None)
   await interaction.response.send_message(
-      f"🔒 Użytkownik {member.mention} został usunięty z ticketa."
+      f"🔒 Użytkownik {member.mention} został usunięty z tego ticketa."
   )
 
 
@@ -850,8 +896,9 @@ async def remove_member(interaction: Interaction, member: discord.Member):
 async def close_ticket_cmd(interaction: Interaction):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
-        "❌ Brak uprawnień!", ephemeral=True
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
     )
+
   await interaction.response.send_message(
       "🔒 Ten ticket zostanie zamknięty za 3 sekundy..."
   )
@@ -867,6 +914,7 @@ async def testjoin(interaction: Interaction, member: discord.Member):
     return await interaction.response.send_message(
         "❌ Brak uprawnień!", ephemeral=True
     )
+
   channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
   if not channel:
     return await interaction.response.send_message(
@@ -876,8 +924,15 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   embed = discord.Embed(
       title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg\n> "
-          "najchętniej wybieranego komisu w mieście."
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "**Jak zacząć?**\n"
+          "• Użyj przycisku **✏️ Ustaw dane**, aby dopasować swój nick IC.\n"
+          "• Skorzystaj z zakładek poniżej w razie pytań lub chęci podjęcia"
+          " pracy.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
       ),
       color=discord.Color.gold(),
   )
@@ -891,7 +946,10 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   )
 
 
-@client.tree.command(name="awans", description="Awansuj pracownika")
+@client.tree.command(
+    name="awans", description="Awansuj pracownika i wpisz powód"
+)
+@app_commands.describe(pracownik="Pracownik, którego chcesz awansować")
 async def awans(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
@@ -900,7 +958,10 @@ async def awans(interaction: Interaction, pracownik: discord.Member):
   await interaction.response.send_modal(PowodHRModal("awans", pracownik))
 
 
-@client.tree.command(name="degrad", description="Zdegraduj pracownika")
+@client.tree.command(
+    name="degrad", description="Zdegraduj pracownika i wpisz powód"
+)
+@app_commands.describe(pracownik="Pracownik, którego chcesz zdegradować")
 async def degrad(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
@@ -909,7 +970,10 @@ async def degrad(interaction: Interaction, pracownik: discord.Member):
   await interaction.response.send_modal(PowodHRModal("degrad", pracownik))
 
 
-@client.tree.command(name="zwolnienie", description="Zwolnij pracownika")
+@client.tree.command(
+    name="zwolnienie", description="Zwolnij pracownika i wyślij profesjonalny embed"
+)
+@app_commands.describe(pracownik="Pracownik, którego chcesz zwolnić")
 async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
@@ -919,18 +983,23 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
   roles_to_remove = [
       r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
   ]
+
   try:
     if roles_to_remove:
       await pracownik.remove_roles(*roles_to_remove)
   except discord.Forbidden:
     return await interaction.response.send_message(
-        "⚠️ Brak uprawnień bota!", ephemeral=True
+        "⚠️ Bot nie ma uprawnień do odebrania ról temu użytkownikowi!",
+        ephemeral=True,
     )
 
   embed = discord.Embed(
-      title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
-      description=f"Pracownik {pracownik.mention} został zwolniony z komisu.",
-      color=discord.Color.gold(),
+      title="🔴 ZWOLNIENIE Z PRACOWNICZYCH SZEREGÓW",
+      description=(
+          f"Pracownik {pracownik.mention} został zwolniony z komisu"
+          " **Pieniążek Auto**."
+      ),
+      color=discord.Color.red(),
       timestamp=datetime.now(),
   )
   embed.set_thumbnail(url=pracownik.display_avatar.url)
@@ -940,13 +1009,13 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
       inline=True,
   )
   embed.add_field(
-      name="👑 Zarząd", value=f"{interaction.user.mention}", inline=True
+      name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True
   )
   embed.add_field(
-      name="📊 Status", value="**Zwolniony z szeregów**", inline=False
+      name="📊 Status", value="**Zwolniony / Odrzucony z kadry**", inline=False
   )
   embed.set_footer(
-      text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+      text="Pieniążek Auto OSLORP • System Kadr",
       icon_url=(
           interaction.guild.icon.url if interaction.guild.icon else None
       ),
@@ -956,7 +1025,9 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
   if log_channel:
     await log_channel.send(content=f"{pracownik.mention}", embed=embed)
   await interaction.response.send_message(
-      f"✅ Zwolniono pracownika {pracownik.mention}.", ephemeral=True
+      f"✅ Pracownik {pracownik.mention} został pomyślnie zwolniony, a jego"
+      " rangi pracownicze zostały odebrane.",
+      ephemeral=True,
   )
 
 
@@ -977,30 +1048,15 @@ async def raport(
     return await interaction.response.send_message(
         "❌ Tylko dla pracowników!", ephemeral=True
     )
-
   embed = discord.Embed(
-      title="✦ PIENIĄŻEK AUTO | RAPORT SPRZEDAŻY",
+      title="📝 RAPORT ZE SPRZEDAŻY",
       color=discord.Color.gold(),
       timestamp=datetime.now(),
   )
-  embed.set_thumbnail(url=interaction.user.display_avatar.url)
-  embed.add_field(
-      name="👤 Pracownik",
-      value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
-      inline=True,
-  )
-  embed.add_field(
-      name="💰 Kwota / Auto", value=f"```css\n[{kwota}]\n```", inline=True
-  )
+  embed.add_field(name="👤 Kto:", value=f"{interaction.user.mention}")
+  embed.add_field(name="💰 Za ile:", value=f"{kwota}")
   if dowod.content_type and "image" in dowod.content_type:
     embed.set_image(url=dowod.url)
-  embed.set_footer(
-      text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
-      icon_url=(
-          interaction.guild.icon.url if interaction.guild.icon else None
-      ),
-  )
-
   await interaction.response.send_message(
       content=f"<@&{ZARZAD_ROLE_ID}>",
       embed=embed,
