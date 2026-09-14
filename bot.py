@@ -411,7 +411,7 @@ class EmployeePanelView(View):
 
 
 # ==============================================================================
-# NOWY PROFESJONALNY SYSTEM OPŁAT TYGODNIOWYCH
+# SYSTEM OPŁAT TYGODNIOWYCH (Z SYNCHRONIZACJĄ RÓL)
 # ==============================================================================
 async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     if not custom_date_str:
@@ -480,6 +480,63 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
         )
     )
     return embed
+
+
+async def sync_fees_embed_on_role_change(guild: discord.Guild):
+    fees_channel = guild.get_channel(FEES_CHANNEL_ID)
+    if not fees_channel:
+        return
+
+    target_message = None
+    target_embed = None
+    async for message in fees_channel.history(limit=10):
+        if (
+            message.author == guild.me
+            and message.embeds
+            and "OPŁATY TYGODNIOWE" in message.embeds[0].title
+        ):
+            target_message = message
+            target_embed = message.embeds[0]
+            break
+
+    if not target_message or not target_embed:
+        return
+
+    # Wyciągamy obecną datę z istniejącego embedu
+    old_content = target_embed.description
+    date_str = None
+    for line in old_content.split("\n"):
+        if "Okres rozliczeniowy:" in line:
+            date_str = line.split("`")[1]
+            break
+
+    # Tworzymy nową strukturę z aktualnymi rolami użytkowników
+    new_embed = await generate_fees_embed(guild, date_str)
+
+    # Przenosimy zapamiętane statusy ✅ ze starego embedu
+    old_lines = old_content.split("\n")
+    paid_user_ids = set()
+    for line in old_lines:
+        if "✅" in line:
+            for word in line.split():
+                if word.startswith("<@") and word.endswith(">"):
+                    paid_user_ids.add(word)
+
+    if paid_user_ids:
+        new_lines = new_embed.description.split("\n")
+        updated_new_lines = []
+        for line in new_lines:
+            line_updated = False
+            for p_id in paid_user_ids:
+                if p_id in line and "❌" in line:
+                    updated_new_lines.append(line.replace("❌", "✅"))
+                    line_updated = True
+                    break
+            if not line_updated:
+                updated_new_lines.append(line)
+        new_embed.description = "\n".join(updated_new_lines)
+
+    await target_message.edit(embed=new_embed)
 
 
 # ==============================================================================
@@ -1038,17 +1095,15 @@ class MyClient(discord.Client):
             except Exception as e:
                 print(f"Błąd automatycznego odświeżania listy: {e}")
 
-    # Pętla sprawdzająca co godzinę, czy dzisiaj jest niedziela i godzina 12:00 -> Generuje nowy panel opłat
     @tasks.loop(hours=1)
     async def sunday_fees_loop(self):
         now = datetime.now()
-        if now.weekday() == 6 and now.hour == 12:  # 6 to niedziela
+        if now.weekday() == 6 and now.hour == 12:
             guild = self.get_guild(GUILD_ID)
             if guild:
                 fees_channel = guild.get_channel(FEES_CHANNEL_ID)
                 if fees_channel:
                     try:
-                        # Sprawdzamy, czy w ciągu ostatnich 23h był już wysłany panel, żeby nie wysłać wielokrotnie
                         async for msg in fees_channel.history(limit=5):
                             if (
                                 msg.author == guild.me
@@ -1056,7 +1111,6 @@ class MyClient(discord.Client):
                                 and "OPŁATY TYGODNIOWE"
                                 in msg.embeds[0].title
                             ):
-                                # Jeśli stworzono już dzisiaj, pomijamy
                                 if (
                                     datetime.now() - msg.created_at
                                 ).total_seconds() < 86400:
@@ -1084,8 +1138,21 @@ async def on_ready():
 
 
 # ==============================================================================
-# AUTOMATYCZNE POWITANIA (Z WERYFIKACJĄ)
+# AUTOMATYCZNE SYNCHRONIZACJE (LISTA PRACOWNIKÓW I OPŁATY PO ZMIANIE RÓL)
 # ==============================================================================
+@client.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    if after.guild.id != GUILD_ID:
+        return
+    # Sprawdzamy czy zmieniły się role
+    if before.roles != after.roles:
+        try:
+            await update_employee_list(after.guild)
+            await sync_fees_embed_on_role_change(after.guild)
+        except Exception as e:
+            print(f"Błąd aktualizacji przy zmianie ról: {e}")
+
+
 @client.event
 async def on_member_join(member: discord.Member):
     if member.guild.id != GUILD_ID:
@@ -1319,8 +1386,6 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
             updated_lines.append(line)
 
     if not found:
-        # Jeśli pracownika nie było jeszcze w embedzie (np. świeżo zatrudniony), dodajemy go dynamicznie do odpowiedniej sekcji
-        # Szukamy po rolach użytkownika, do której sekcji pasuje
         user_grade_header = None
         roles_config = [
             ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
@@ -1349,9 +1414,7 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
                     continue
                 if in_target_section:
                     if line.startswith("> #") or line.startswith("##"):
-                        # Koniec sekcji, wrzucamy przed nią nowego pracownika
                         if not added:
-                            # Usuwamy poprzednią pustą kreskę '-' jeśli była samotna
                             if (
                                 rebuilt_lines
                                 and rebuilt_lines[-1].strip() == "-"
@@ -1365,7 +1428,7 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
                             added = True
                         in_target_section = False
                     elif line.strip() == "-" and not added:
-                        rebuilt_lines.pop()  # usuwamy minusa
+                        rebuilt_lines.pop()
                         rebuilt_lines.append(
                             f"- {pracownik.display_name} | {pracownik.mention} ✅"
                         )
