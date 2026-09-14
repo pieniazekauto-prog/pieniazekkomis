@@ -63,7 +63,9 @@ GRADE_NAMES = {
 }
 
 WELCOME_CHANNEL_ID = 1503013291197202432
-WELCOME_IMAGE_URL = "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_7.png"
+WELCOME_IMAGE_URL = (
+    "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
+)
 
 
 # ==============================================================================
@@ -456,7 +458,7 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY I TICKETÓW (PRZYWRÓCONE DWA PRZYCISKI!)
+# GŁÓWNY WIDOK POWITALNY I TICKETÓW (SZARE / NEUTRALNE PRZYCISKI)
 # ==============================================================================
 class WelcomeTicketView(View):
 
@@ -465,7 +467,7 @@ class WelcomeTicketView(View):
 
   @button(
       label="Ustaw dane",
-      style=ButtonStyle.blurple,
+      style=ButtonStyle.secondary,
       custom_id="set_data_btn",
       emoji="✏️",
   )
@@ -474,7 +476,7 @@ class WelcomeTicketView(View):
 
   @button(
       label="Podanie o pracę",
-      style=ButtonStyle.blurple,
+      style=ButtonStyle.secondary,
       custom_id="ticket_podanie_btn",
       emoji="📄",
   )
@@ -485,7 +487,7 @@ class WelcomeTicketView(View):
 
   @button(
       label="Pomoc / Zarząd",
-      style=ButtonStyle.blurple,
+      style=ButtonStyle.secondary,
       custom_id="ticket_help_btn",
       emoji="🛠️",
   )
@@ -617,13 +619,23 @@ async def setup_panel(interaction: Interaction):
     )
 
   embed = discord.Embed(
-      title="👑 ⟡ STREFA ZARZĄDU • POMOC I WSPARCIE",
+      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          "Wybierz odpowiedni przycisk poniżej, aby ustawić swoje dane IC,"
-          " złożyć podanie lub skontaktować się z Zarządem."
+          "Witaj w oficjalnym centrum dowodzenia komisu **Pieniążek Auto**!\n\n"
+          "> *Skup • Sprzedaż • Zamiana pojazdów w najlepszych cenach w"
+          " mieście.*\n\n"
+          "**Jak zacząć?**\n"
+          "• Kliknij **✏️ Ustaw dane**, aby zaktualizować swoje imię i nazwisko"
+          " IC.\n• Kliknij **📄 Podanie o pracę**, jeśli chcesz dołączyć do"
+          " naszej ekipy.\n• Kliknij **🛠️ Pomoc / Zarząd**, aby skontaktować"
+          " się z kadrą zarządzającą.\n\n"
+          "*Ustaw swoje dane IC i baw się dobrze!*"
       ),
       color=discord.Color.gold(),
   )
+  embed.set_image(url=WELCOME_IMAGE_URL)
+  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message("✅ Wysłano panel!", ephemeral=True)
 
@@ -644,9 +656,15 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   embed = discord.Embed(
       title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg\n>"
-          " najchętniej wybieranego komisu w\n> mieście.\n\nUstaw swoje dane"
-          " IC i baw się dobrze!"
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "**Jak zacząć?**\n"
+          "• Użyj przycisku **✏️ Ustaw dane**, aby dopasować swój nick IC.\n"
+          "• Skorzystaj z zakładek poniżej w razie pytań lub chęci podjęcia"
+          " pracy.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
       ),
       color=discord.Color.gold(),
   )
