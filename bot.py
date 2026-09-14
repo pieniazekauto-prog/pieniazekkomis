@@ -737,7 +737,7 @@ class TicketCloseConfirmView(View):
           "❌ Tylko Zarząd może usunąć ten ticket!", ephemeral=True
       )
     await interaction.response.send_message(
-        "🔒 Usuwanie kanału za 3 sekundy..."
+        "🔒 Usuwanie kanału za 3 sekund..."
     )
     import asyncio
 
@@ -828,27 +828,75 @@ async def setup_panel(interaction: Interaction):
 
 @client.tree.command(
     name="skip",
-    description="Oznacza ticket jako pominięty lub przenosi do archiwum uwagi",
+    description="Oznacza ticket jako w trakcie rozpatrywania (prośba o SS dowodu i karalność)",
 )
-@app_commands.describe(powod="Powód pominięcia ticketa")
-async def skip_ticket(interaction: Interaction, powod: str = "Brak"):
+async def skip_ticket(interaction: Interaction):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
         "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
     )
 
   embed = discord.Embed(
-      title="⏭️ TICKET POMINIĘTY / ARCHIWIZOWANY",
+      title="⏳ STATUS: W TRAKCIE ROZPATRYWANIA",
       description=(
-          f"Zarząd {interaction.user.mention} oznaczył ten ticket jako"
-          f" pominięty.\n\n**Powód:** `{powod}`"
+          "Twoje podanie jest aktualnie **w trakcie rozpatrywania**. Prosimy"
+          " o cierpliwość i oczekiwanie na decyzję Zarządu.\n\n"
+          "📸 **Wymagane dodatkowo:**\n"
+          "• Prosimy o przesłanie **screenshotu dowodu osobistego**.\n"
+          "• Prosimy o informację na temat tego, **czy byłeś karany**."
       ),
       color=discord.Color.orange(),
       timestamp=datetime.now(),
   )
-  embed.set_footer(text="Pieniążek Auto • System Zarządzania")
+  embed.set_footer(text="Pieniążek Auto • System Podaniowy")
 
   await interaction.response.send_message(embed=embed)
+
+
+@client.tree.command(name="add", description="Dodaje użytkownika do ticketa")
+@app_commands.describe(member="Użytkownik, którego chcesz dodać")
+async def add_member(interaction: Interaction, member: discord.Member):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
+    )
+
+  await interaction.channel.set_permissions(
+      member, view_channel=True, send_messages=True, read_message_history=True
+  )
+  await interaction.response.send_message(
+      f"✅ Pomyślnie dodano użytkownika {member.mention} do tego ticketa."
+  )
+
+
+@client.tree.command(name="remove", description="Wyrzuca użytkownika z ticketa")
+@app_commands.describe(member="Użytkownik, którego chcesz wyrzucić")
+async def remove_member(interaction: Interaction, member: discord.Member):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
+    )
+
+  await interaction.channel.set_permissions(member, overwrite=None)
+  await interaction.response.send_message(
+      f"🔒 Użytkownik {member.mention} został usunięty z tego ticketa."
+  )
+
+
+@client.tree.command(name="close", description="Zamyka bieżący ticket")
+async def close_ticket_cmd(interaction: Interaction):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
+    )
+
+  await interaction.response.send_message(
+      "🔒 Ten ticket zostanie zamknięty za 3 sekundy..."
+  )
+  import asyncio
+
+  await asyncio.sleep(3)
+  await interaction.channel.delete()
 
 
 @client.tree.command(name="testjoin", description="Testuje powitanie")
