@@ -686,6 +686,45 @@ async def setuppomoc(interaction: Interaction):
 
 
 @client.tree.command(
+    name="testjoin",
+    description="Testuje powitanie dla wybranego użytkownika (Tylko dla Zarządu)",
+)
+async def testjoin(interaction: Interaction, member: discord.Member):
+  if not is_zarzad(interaction.user):
+    await interaction.response.send_message(
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    )
+    return
+
+  channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
+  if not channel:
+    await interaction.response.send_message(
+        "❌ Nie znaleziono kanału powitalnego o ID: "
+        f"`{WELCOME_CHANNEL_ID}`!",
+        ephemeral=True,
+    )
+    return
+
+  embed = discord.Embed(
+      title="✨ Witaj w społeczności Pieniążek Auto!",
+      description=(
+          f"Siema {member.mention}! 🎉\n\nPrzekroczyłeś próg naszego serwera."
+          " Kliknij odpowiedni przycisk poniżej, aby się zweryfikować lub"
+          " otworzyć odpowiedni ticket. *(Test Wejścia)*"
+      ),
+      color=discord.Color.from_rgb(212, 175, 55),
+  )
+  embed.set_thumbnail(url=member.display_avatar.url)
+
+  await channel.send(embed=embed, view=WelcomeTicketView())
+  await interaction.response.send_message(
+      f"✅ Pomyślnie odtworzono testowe wejście dla {member.mention} na kanale"
+      f" {channel.mention}!",
+      ephemeral=True,
+  )
+
+
+@client.tree.command(
     name="wypowiedzenie", description="Złóż oficjalne wypowiedzenie ze stanowiska"
 )
 async def wypowiedzenie(interaction: Interaction):
