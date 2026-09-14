@@ -56,6 +56,11 @@ GRADES = [
 VERIFY_ROLE_ID = 1503009366985408553
 WELCOME_CHANNEL_ID = 1503013291197202432
 
+# URL grafiki powitalnej (baner na dole embeda)
+WELCOME_IMAGE_URL = (
+    "https://images.unsplash.com/photo-1503376780353-7e6692767b70"  # Podmień na link do swojego banera
+)
+
 
 # ==============================================================================
 # HELPER FUNCTIONS (SPRAWDZANIE UPRAWNIEŃ)
@@ -71,6 +76,33 @@ def is_pracownik(user: discord.Member) -> bool:
   return any(
       role.id == PRACOWNIK_ROLE_ID for role in user.roles
   ) or is_zarzad(user)
+
+
+# ==============================================================================
+# MODAL DO USTAWIANIA DANYCH IC
+# ==============================================================================
+class UstawDaneModal(Modal, title="Ustaw dane IC"):
+  imie_nazwisko = TextInput(
+      label="Imię i Nazwisko IC",
+      placeholder="np. Xavier Pieniążek",
+      required=True,
+      max_length=32,
+  )
+
+  async def on_submit(self, interaction: Interaction):
+    nowy_nick = self.imie_nazwisko.value
+    try:
+      await interaction.user.edit(nick=nowy_nick)
+      await interaction.response.send_message(
+          f"✅ Twoje dane zostały zaktualizowane na: **{nowy_nick}**",
+          ephemeral=True,
+      )
+    except discord.Forbidden:
+      await interaction.response.send_message(
+          "❌ Bot nie ma uprawnień do zmiany Twojego pseudonimu (Twoja rola"
+          " jest wyżej niż rola bota w ustawieniach ról).",
+          ephemeral=True,
+      )
 
 
 # ==============================================================================
@@ -208,7 +240,6 @@ class MandatView(View):
 # SYSTEM WYPOWIEDZEŃ
 # ==============================================================================
 class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
-
   stanowisko = TextInput(
       label="Obecne Stanowisko",
       placeholder="np. Starszy Sprzedawca / Mechanik",
@@ -245,7 +276,7 @@ class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
         inline=True,
     )
     embed.add_field(
-        name="💼 Stanowisko", value=f"`{self.stanowisko.value}`", inline=True
+        name="💼 Stanowisko", value=f"{self.stanowisko.value}", inline=True
     )
     embed.add_field(
         name="📝 Powód", value=f"```\n{self.powod.value}\n```", inline=False
@@ -302,7 +333,7 @@ class DecyzjaZarzaduView(View):
     except discord.Forbidden:
       status_desc = (
           f"⚠️ **Zatwierdzono przez {interaction.user.mention}**\n*Bot nie ma"
-          " uprawnień (rola bota musi być wyżej na liście ról)!*"
+          " uprawnień do odebrania ról!*"
       )
 
     embed = interaction.message.embeds[0]
@@ -341,43 +372,55 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# WIDOKI DLA PANELI (WERYFIKACJA, PODANIA, POMOC)
+# GŁÓWNY WIDOK POWITALNY (ZE SCREENA: Weryfikacja, Ustaw dane, Kontakt, Podanie)
 # ==============================================================================
 class WelcomeTicketView(View):
 
   def __init__(self):
     super().__init__(timeout=None)
 
+  # Rząd 1: Przycisk weryfikacji / statusu Gościa
   @button(
-      label="Zweryfikuj się",
-      style=ButtonStyle.green,
-      custom_id="verify_button",
-      emoji="✅",
+      label="Gość",
+      style=ButtonStyle.secondary,
+      custom_id="status_gosc_btn",
+      emoji="👤",
+      disabled=True,
   )
-  async def verify_button(
+  async def status_gosc(
       self, interaction: Interaction, button: discord.ui.Button
   ):
-    role = interaction.guild.get_role(VERIFY_ROLE_ID)
-    if not role:
-      await interaction.response.send_message(
-          "❌ Nie znaleziono roli weryfikacyjnej!", ephemeral=True
-      )
-      return
+    pass
 
-    if role in interaction.user.roles:
-      await interaction.response.send_message(
-          "Masz już zweryfikowaną rolę na serwerze!", ephemeral=True
-      )
-    else:
-      await interaction.user.add_roles(role)
-      await interaction.response.send_message(
-          "Pomyślnie zweryfikowano! Witaj na serwerze.", ephemeral=True
-      )
+  # Rząd 1: Przycisk ustawiania danych IC (otwierający okienko Modal)
+  @button(
+      label="Ustaw dane",
+      style=ButtonStyle.secondary,
+      custom_id="ustaw_dane_modal_btn",
+      emoji="✏️",
+  )
+  async def ustaw_dane(
+      self, interaction: Interaction, button: discord.ui.Button
+  ):
+    await interaction.response.send_modal(UstawDaneModal())
 
+  # Rząd 1 / 2: Przycisk Linku do Kontaktu
+  @button(
+      label="Kontakt",
+      style=ButtonStyle.link,
+      url="https://discord.com",  # Podmień na link do kanału kontaktowego
+      emoji="🗂️",
+  )
+  async def kontakt_link(
+      self, interaction: Interaction, button: discord.ui.Button
+  ):
+    pass
+
+  # Rząd 2: Przycisk Podania o pracę (Tworzy prywatny ticket)
   @button(
       label="Podanie o pracę",
       style=ButtonStyle.blurple,
-      custom_id="ticket_job",
+      custom_id="ticket_job_btn",
       emoji="📄",
   )
   async def ticket_job(
@@ -387,17 +430,18 @@ class WelcomeTicketView(View):
         interaction, "podanie", "📄 ⟡ 𝐏𝐨𝐝𝐚𝐧𝐢𝐚", "Podanie o pracę"
     )
 
+  # Rząd 2: Przycisk Pomocy / Zarządu (Tworzy prywatny ticket)
   @button(
-      label="Pomoc", style=ButtonStyle.gray, custom_id="ticket_help", emoji="🛠️"
+      label="Pomoc / Zarząd",
+      style=ButtonStyle.gray,
+      custom_id="ticket_help_btn",
+      emoji="🛠️",
   )
   async def ticket_help(
       self, interaction: Interaction, button: discord.ui.Button
   ):
     await self.create_ticket(
-        interaction,
-        "pomoc",
-        "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮",
-        "Pomoc / Support OOC",
+        interaction, "pomoc", "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮", "Pomoc / Support OOC"
     )
 
   async def create_ticket(
@@ -443,59 +487,6 @@ class WelcomeTicketView(View):
     )
 
 
-class PomocButtonView(View):
-
-  def __init__(self):
-    super().__init__(timeout=None)
-
-  @button(
-      label="Skontaktuj się z Zarządem",
-      style=ButtonStyle.blurple,
-      custom_id="setup_pomoc_btn",
-      emoji="👑",
-  )
-  async def contact_zarzad(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    guild = interaction.guild
-    category_name = "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮"
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        interaction.user: discord.PermissionOverwrite(
-            view_channel=True, send_messages=True, read_message_history=True
-        ),
-        guild.me: discord.PermissionOverwrite(
-            view_channel=True, send_messages=True, manage_channels=True
-        ),
-    }
-
-    category = discord.utils.get(guild.categories, name=category_name)
-    channel_name = f"pomoc-{interaction.user.name}"
-    ticket_channel = await guild.create_text_channel(
-        name=channel_name, overwrites=overwrites, category=category
-    )
-
-    close_view = TicketCloseView()
-    embed = discord.Embed(
-        title="👑 Kontakt z Zarządem • Pieniążek Auto",
-        description=(
-            f"Witaj {interaction.user.mention}!\nOpisz w czym możemy Ci pomóc."
-            " Członek Zarządu odpowie na Twoje zgłoszenie tak szybko, jak to"
-            " możliwe."
-        ),
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
-    )
-
-    await ticket_channel.send(
-        content=f"{interaction.user.mention}", embed=embed, view=close_view
-    )
-    await interaction.response.send_message(
-        f"Utworzono kanał kontaktu z zarządem: {ticket_channel.mention}",
-        ephemeral=True,
-    )
-
-
 class TicketCloseView(View):
 
   def __init__(self):
@@ -527,9 +518,7 @@ class MyClient(discord.Client):
     self.tree = app_commands.CommandTree(self)
 
   async def setup_hook(self):
-    # Rejestracja widoków do działania ciągłego
     self.add_view(WelcomeTicketView())
-    self.add_view(PomocButtonView())
     self.add_view(TicketCloseView())
 
     guild = discord.Object(id=GUILD_ID)
@@ -553,15 +542,20 @@ async def on_member_join(member: discord.Member):
   channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
   if channel:
     embed = discord.Embed(
-        title="✨ Witaj w społeczności Pieniążek Auto!",
+        title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
         description=(
-            f"Siema {member.mention}! 🎉\n\nPrzekroczyłeś próg naszego serwera."
-            " Kliknij odpowiedni przycisk poniżej, aby się zweryfikować lub"
-            " otworzyć odpowiedni ticket."
+            f"Siema {member.mention}! 🥂\n\n"
+            "> Właśnie przekroczyłeś próg\n"
+            "> najchętniej wybieranego komisu w\n"
+            "> mieście.\n\n"
+            "Ustaw swoje dane IC i baw się dobrze!"
         ),
-        color=discord.Color.from_rgb(212, 175, 55),
+        color=discord.Color.gold(),
     )
     embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_image(url=WELCOME_IMAGE_URL)
+    embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+
     await channel.send(embed=embed, view=WelcomeTicketView())
 
 
@@ -570,7 +564,7 @@ async def on_member_join(member: discord.Member):
 # ==============================================================================
 @client.tree.command(
     name="setup_panel",
-    description="Wysłanie panelu weryfikacji i ticketów na kanał",
+    description="Wysłanie panelu powitalnego z przyciskami na kanał",
 )
 async def setup_panel(interaction: Interaction):
   if not is_zarzad(interaction.user):
@@ -580,108 +574,22 @@ async def setup_panel(interaction: Interaction):
     return
 
   embed = discord.Embed(
-      title="Weryfikacja & System Zgłoszeń",
+      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          "Kliknij przycisk poniżej, aby zweryfikować swoje konto, złożyć"
-          " podanie o pracę lub uzyskać pomoc od zarządu."
+          "Witamy na oficjalnym serwerze komisu!\n\n"
+          "> Kliknij przycisk **'Ustaw dane'**, aby zmienić nick na swoje imię"
+          " i nazwisko IC.\n"
+          "> Skorzystaj z przycisków poniżej, aby złożyć podanie lub uzyskać"
+          " pomoc."
       ),
       color=discord.Color.gold(),
   )
+  embed.set_image(url=WELCOME_IMAGE_URL)
+  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
       "✅ Panel został wysłany!", ephemeral=True
-  )
-
-
-@client.tree.command(
-    name="setuppodania",
-    description=(
-        "Wysyła elegancki embed z informacjami i wzorem podania na kanał"
-    ),
-)
-async def setuppodania(interaction: Interaction):
-  if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
-    )
-    return
-
-  embed = discord.Embed(
-      title="📄 REKRUTACJA DO PIENIĄŻEK AUTO • OSLORP",
-      description=(
-          "Marzy Ci się praca w naszym zespole? Chcesz dołączyć do dynamicznie"
-          " rozwijającego się komisu i zarabiać świetne pieniądze? Złóż swoje"
-          " podanie już teraz!\n\n"
-          "📌 **Wzór podania:**\n"
-          "Skopiuj poniższy wzór, kliknij przycisk **'Podanie o pracę'**"
-          " poniżej lub w panelu zgłoszeń, a następnie wklej go na utworzonym"
-          " prywatnym kanale i uzupełnij wymagane informacje."
-      ),
-      color=discord.Color.gold(),
-      timestamp=datetime.now(),
-  )
-  embed.add_field(
-      name="📝 Wzór do skopiowania:",
-      value=(
-          "```text\n"
-          "Imię:\n"
-          "Nazwisko:\n"
-          "Wiek:\n"
-          "Mutacja:\n"
-          "Stan konta (zdjęcie):\n"
-          "Ilość aut (zdjęcie):\n"
-          "Czy pracowałeś już kiedyś na komisie (jak tak to jakim):\n"
-          "```"
-      ),
-      inline=False,
-  )
-  embed.set_footer(
-      text="Rekrutacja • Pieniążek Auto",
-      icon_url=(
-          client.user.display_avatar.url if client.user else None
-      ),
-  )
-
-  await interaction.channel.send(embed=embed, view=WelcomeTicketView())
-  await interaction.response.send_message(
-      "✅ Panel rekrutacyjny ze wzorem został pomyślnie wysłany!",
-      ephemeral=True,
-  )
-
-
-@client.tree.command(
-    name="setuppomoc",
-    description="Wysyła profesjonalny panel kontaktu z zarządem",
-)
-async def setuppomoc(interaction: Interaction):
-  if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
-    )
-    return
-
-  embed = discord.Embed(
-      title="👑 STREFA ZARZĄDU • POMOC I WSPARCIE",
-      description=(
-          "Masz ważne pytania, sprawę do omówienia, potrzebujesz profesjonalnego"
-          " wsparcia lub chcesz skontaktować się bezpośrednio z Zarządem"
-          " **Pieniążek Auto**?\n\nKliknij przycisk poniżej, aby utworzyć"
-          " prywatny kanał zgłoszenia, na którym nasz zespół udzieli Ci"
-          " pomocy."
-      ),
-      color=discord.Color.gold(),
-      timestamp=datetime.now(),
-  )
-  embed.set_footer(
-      text="Support • Pieniążek Auto",
-      icon_url=(
-          client.user.display_avatar.url if client.user else None
-      ),
-  )
-
-  await interaction.channel.send(embed=embed, view=PomocButtonView())
-  await interaction.response.send_message(
-      "✅ Panel pomocy został pomyślnie wysłany!", ephemeral=True
   )
 
 
@@ -699,28 +607,28 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
   if not channel:
     await interaction.response.send_message(
-        "❌ Nie znaleziono kanału powitalnego o ID: "
-        f"`{WELCOME_CHANNEL_ID}`!",
-        ephemeral=True,
+        "❌ Nie znaleziono kanału powitalnego!", ephemeral=True
     )
     return
 
   embed = discord.Embed(
-      title="✨ Witaj w społeczności Pieniążek Auto!",
+      title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          f"Siema {member.mention}! 🎉\n\nPrzekroczyłeś próg naszego serwera."
-          " Kliknij odpowiedni przycisk poniżej, aby się zweryfikować lub"
-          " otworzyć odpowiedni ticket. *(Test Wejścia)*"
+          f"Siema {member.mention}! 🥂\n\n"
+          "> Właśnie przekroczyłeś próg\n"
+          "> najchętniej wybieranego komisu w\n"
+          "> mieście.\n\n"
+          "Ustaw swoje dane IC i baw się dobrze!"
       ),
-      color=discord.Color.from_rgb(212, 175, 55),
+      color=discord.Color.gold(),
   )
   embed.set_thumbnail(url=member.display_avatar.url)
+  embed.set_image(url=WELCOME_IMAGE_URL)
+  embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
 
   await channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
-      f"✅ Pomyślnie odtworzono testowe wejście dla {member.mention} na kanale"
-      f" {channel.mention}!",
-      ephemeral=True,
+      f"✅ Wysłano testowe powitanie dla {member.mention}!", ephemeral=True
   )
 
 
@@ -730,146 +638,10 @@ async def testjoin(interaction: Interaction, member: discord.Member):
 async def wypowiedzenie(interaction: Interaction):
   if not is_pracownik(interaction.user):
     await interaction.response.send_message(
-        "❌ Ta komenda jest dostępna tylko dla osób z rangą Pracownik!",
-        ephemeral=True,
+        "❌ Dostępne tylko dla pracowników!", ephemeral=True
     )
     return
-
   await interaction.response.send_modal(WypowiedzenieModal())
-
-
-@client.tree.command(
-    name="zarzadzaj",
-    description="Panel zarządzania pracownikiem (Tylko dla Zarządu)",
-)
-@app_commands.choices(
-    akcja=[
-        app_commands.Choice(name="⬆️ Awans", value="awans"),
-        app_commands.Choice(name="⬇️ Degradacja", value="degrad"),
-        app_commands.Choice(
-            name="🚫 Zwolnienie dyscyplinarne", value="zwolnienie"
-        ),
-    ]
-)
-async def zarzadzaj(
-    interaction: Interaction,
-    pracownik: discord.Member,
-    akcja: app_commands.Choice[str],
-    powod: str,
-):
-  if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Nie posiadasz uprawnień Zarządu do użycia tej komendy!",
-        ephemeral=True,
-    )
-    return
-
-  current_index = -1
-  for i, role_id in enumerate(GRADES):
-    if any(r.id == role_id for r in pracownik.roles):
-      current_index = i
-      break
-
-  embed = discord.Embed(timestamp=datetime.now())
-  embed.set_author(
-      name=interaction.guild.name,
-      icon_url=interaction.guild.icon.url if interaction.guild.icon else None,
-  )
-  embed.set_thumbnail(url=pracownik.display_avatar.url)
-  embed.add_field(
-      name="👤 Pracownik",
-      value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
-      inline=True,
-  )
-  embed.add_field(
-      name="👑 Wykonał", value=f"{interaction.user.mention}", inline=True
-  )
-  embed.add_field(
-      name="📝 Powód", value=f"```\n{powod}\n```", inline=False
-  )
-  embed.set_footer(
-      text="System HR • Pieniążek Auto",
-      icon_url=(
-          client.user.display_avatar.url if client.user else None
-      ),
-  )
-
-  try:
-    if akcja.value == "awans":
-      if current_index == -1:
-        new_role_id = GRADES[0]
-      elif current_index < len(GRADES) - 1:
-        new_role_id = GRADES[current_index + 1]
-      else:
-        await interaction.response.send_message(
-            "❌ Pracownik posiada już najwyższy możliwy stopień!",
-            ephemeral=True,
-        )
-        return
-
-      old_roles = [r for r in pracownik.roles if r.id in GRADES]
-      new_role = interaction.guild.get_role(new_role_id)
-
-      if old_roles:
-        await pracownik.remove_roles(*old_roles)
-      if new_role:
-        await pracownik.add_roles(new_role)
-
-      embed.title = "📈 AWANS PRACOWNIKA"
-      embed.color = discord.Color.gold()
-      embed.add_field(
-          name="💼 Nowe Stanowisko",
-          value=f"{new_role.mention if new_role else 'Brak roli'}",
-          inline=False,
-      )
-
-    elif akcja.value == "degrad":
-      if current_index > 0:
-        new_role_id = GRADES[current_index - 1]
-        old_roles = [r for r in pracownik.roles if r.id in GRADES]
-        new_role = interaction.guild.get_role(new_role_id)
-
-        if old_roles:
-          await pracownik.remove_roles(*old_roles)
-        if new_role:
-          await pracownik.add_roles(new_role)
-
-        embed.title = "📉 DEGRADACJA PRACOWNIKA"
-        embed.color = discord.Color.orange()
-        embed.add_field(
-            name="💼 Nowe Stanowisko",
-            value=f"{new_role.mention if new_role else 'Brak roli'}",
-            inline=False,
-        )
-      else:
-        await interaction.response.send_message(
-            "❌ Pracownik nie posiada niższej rangi do degradacji!",
-            ephemeral=True,
-        )
-        return
-
-    elif akcja.value == "zwolnienie":
-      roles_to_remove = [
-          r for r in pracownik.roles if r != interaction.guild.default_role
-      ]
-      await pracownik.remove_roles(*roles_to_remove)
-
-      embed.title = "🚫 ZWOLNIENIE PRACOWNIKA"
-      embed.color = discord.Color.red()
-      embed.add_field(
-          name="📊 Status",
-          value="*Wszystkie rangi zostały odebrane.*",
-          inline=False,
-      )
-
-    await interaction.response.send_message(embed=embed)
-
-  except discord.Forbidden:
-    await interaction.response.send_message(
-        "⚠️ **Brak uprawnień bota!** Przeciągnij rolę bota wyżej w Ustawieniach"
-        " Serwera -> Role.",
-        ephemeral=True,
-    )
 
 
 @client.tree.command(
@@ -880,55 +652,27 @@ async def raport(
 ):
   if not is_pracownik(interaction.user):
     await interaction.response.send_message(
-        "❌ Ta komenda jest dostępna tylko dla osób z rangą Pracownik!",
-        ephemeral=True,
+        "❌ Dostępne tylko dla pracowników!", ephemeral=True
     )
     return
 
   ping_zarzad = f"<@&{ZARZAD_ROLE_ID}>"
-
   embed = discord.Embed(
       title="📝 RAPORT ZE SPRZEDAŻY",
       color=discord.Color.gold(),
       timestamp=datetime.now(),
   )
-  embed.set_author(
-      name=interaction.guild.name,
-      icon_url=interaction.guild.icon.url if interaction.guild.icon else None,
-  )
   embed.add_field(
       name="👤 Kto:", value=f"{interaction.user.mention}", inline=False
   )
   embed.add_field(name="💰 Za ile sprzedano:", value=f"`{kwota}`", inline=False)
-  embed.add_field(
-      name="🔔 Powiadomienie:", value=ping_zarzad, inline=False
-  )
-
   if dowod.content_type and "image" in dowod.content_type:
     embed.set_image(url=dowod.url)
-    embed.add_field(
-        name="🧾 Dowód sprzedaży:",
-        value="*Załączono w zdjęciu poniżej*",
-        inline=False,
-    )
-  else:
-    embed.add_field(
-        name="🧾 Dowód sprzedaży:",
-        value=f"[Otwórz załącznik]({dowod.url})",
-        inline=False,
-    )
 
-  embed.set_thumbnail(url=interaction.user.display_avatar.url)
-  embed.set_footer(
-      text="System Raportów • Pieniążek Auto",
-      icon_url=(
-          client.user.display_avatar.url if client.user else None
-      ),
-  )
-
-  mentions = discord.AllowedMentions(roles=True)
   await interaction.response.send_message(
-      content=ping_zarzad, embed=embed, allowed_mentions=mentions
+      content=ping_zarzad,
+      embed=embed,
+      allowed_mentions=discord.AllowedMentions(roles=True),
   )
 
 
@@ -938,31 +682,25 @@ async def raport(
 async def mandat(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
     await interaction.response.send_message(
-        "❌ Nie posiadasz uprawnień Zarządu do użycia tej komendy!",
-        ephemeral=True,
+        "❌ Brak uprawnień Zarządu!", ephemeral=True
     )
     return
-
   view = MandatView(ukarany=pracownik, wystawiajacy=interaction.user)
   await interaction.response.send_message(
-      f"⚙️ Wybierz powód mandatu BCD dla pracownika {pracownik.mention}:",
+      f"⚙️ Wybierz powód mandatu dla pracownika {pracownik.mention}:",
       view=view,
       ephemeral=True,
   )
 
 
 # ==============================================================================
-# URUCHOMIENIE BOTA ORAZ SERWERA FLASK
+# URUCHOMIENIE BOTA
 # ==============================================================================
 if __name__ == "__main__":
   if TOKEN is None:
-    print(
-        "❌ BŁĄD: Brak zmiennej środowiskowej DISCORD_TOKEN! Ustaw ją w panelu"
-        " Render."
-    )
+    print("❌ BŁĄD: Brak zmiennej DISCORD_TOKEN!")
   else:
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-
     client.run(TOKEN)
