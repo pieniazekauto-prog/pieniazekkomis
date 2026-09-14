@@ -325,14 +325,14 @@ class SetupPanelView(View):
 
 
 # ==============================================================================
-# POPRAWIONy SYSTEM LISTY PRACOWNIKÓW (BEZ BŁĘDÓW PRZESUNIĘĆ)
+# ABSOLUTNIE BEZBŁĘDNY SYSTEM LISTY PRACOWNIKÓW
 # ==============================================================================
 async def update_employee_list(guild: discord.Guild):
     channel = guild.get_channel(EMPLOYEE_LIST_CHANNEL_ID)
     if not channel:
         return
 
-    # Dokładna hierarchia od NAJWYŻSZEJ do NAJNIŻSZEJ rangi
+    # Dokładna hierarchia ról OD NAJWYŻSZEJ DO NAJNIŻSZEJ
     roles_config = [
         ("⟡ @👑 ⟡ Owner⟡", GRADE8_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", GRADE7_ROLE_ID),
@@ -345,40 +345,29 @@ async def update_employee_list(guild: discord.Guild):
         ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
     ]
 
-    sections = {header: [] for header, _ in roles_config}
     assigned_user_ids = set()
+    section_members = {header: [] for header, _ in roles_config}
     total_employees = set()
 
-    # Sprawdzamy każdego członka serwera pod kątem ról
-    for member in guild.members:
-        if member.bot:
-            continue
+    # Przechodzimy po kolei OD GÓRY DO DOŁU po rolach z konfiguracji.
+    # Dzięki temu każdy użytkownik trafia do PIERWSZEJ (najwyższej) roli, którą posiada.
+    for header, role_id in roles_config:
+        role = guild.get_role(role_id)
+        if role:
+            # Sortujemy członków alfabetycznie
+            sorted_members = sorted(
+                role.members, key=lambda m: m.display_name.lower()
+            )
+            for member in sorted_members:
+                if member.id not in assigned_user_ids:
+                    assigned_user_ids.add(member.id)
+                    section_members[header].append(member)
+                    total_employees.add(member.id)
 
-        assigned_role_header = None
-        # Przechodzimy po konfiguracji OD GÓRY DO DOŁU.
-        # Pierwsza rola z góry, którą użytkownik posiada, jest jego najwyższym stanowiskiem!
-        for header, role_id in roles_config:
-            role = guild.get_role(role_id)
-            if role and role in member.roles:
-                assigned_role_header = header
-                break  # Przerywamy pętlę, bo znalezliśmy najwyższą rangę dla tego usera
-
-        if assigned_role_header and member.id not in assigned_user_ids:
-            assigned_user_ids.add(member.id)
-            sections[assigned_role_header].append(member)
-            total_employees.add(member.id)
-
-    # Sortujemy członków w każdej sekcji alfabetycznie
-    for header in sections:
-        sections[header] = sorted(
-            sections[header], key=lambda m: m.display_name.lower()
-        )
-
-    # Składanie czystego embedu
     desc_lines = []
     for header, _ in roles_config:
         desc_lines.append(f"> # {header}")
-        members_list = sections[header]
+        members_list = section_members[header]
         if members_list:
             for m in members_list:
                 desc_lines.append(f"- {m.display_name} | {m.mention}")
