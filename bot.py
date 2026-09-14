@@ -33,23 +33,27 @@ GUILD_ID = 1503007115956977706  # ID Twojego serwera
 ZARZAD_ROLE_ID = 1503151943688654958  # ID Roli Zarządu
 PRACOWNIK_ROLE_ID = 1503009723543191782  # ID Roli Pracownika (Weryfikacji)
 
-# BAZOWE ID DLA AWANSÓW / SPRAWDZEŃ (Możesz zostawić lub używać do komend /awans)
-GRADE8_ROLE_ID = 1547339984992731146
-GRADE7_ROLE_ID = 1503009931589062727
-GRADE6_ROLE_ID = 1547340918389088296
-GRADE4_ROLE_ID = 1547342464963059885
-GRADE3_ROLE_ID = 1548089007416545302
-GRADE2_ROLE_ID = 1547342288231862303
-GRADE1_ROLE_ID = 1547341972484661318
+# DOKŁADNE ID RÓL Z TWOJEJ LISTY
+OWNER_ROLE_ID = 1503010247130746983
+CO_OWNER_ROLE_ID = 1547339984992731146
+MANAGER_ROLE_ID = 1503009931589062727
+KIEROWNIK_ROLE_ID = 1547340918389088296
+SPECJALISTA_ROLE_ID = 1547342464963059885
+DOSWIADCZONY_ROLE_ID = 1548089007416545302
+HANDLARZ_ROLE_ID = 1547342288231862303
+SWIEZAK_ROLE_ID = 1547341972484661318
+OCHRONA_ROLE_ID = 1547694612070666260
 
+# Hierarchia rang do systemu awansów/degradacji (od najniższej do najwyższej)
 GRADES = [
-    GRADE1_ROLE_ID,
-    GRADE2_ROLE_ID,
-    GRADE3_ROLE_ID,
-    GRADE4_ROLE_ID,
-    GRADE6_ROLE_ID,
-    GRADE7_ROLE_ID,
-    GRADE8_ROLE_ID,
+    SWIEZAK_ROLE_ID,
+    HANDLARZ_ROLE_ID,
+    DOSWIADCZONY_ROLE_ID,
+    SPECJALISTA_ROLE_ID,
+    KIEROWNIK_ROLE_ID,
+    MANAGER_ROLE_ID,
+    CO_OWNER_ROLE_ID,
+    OWNER_ROLE_ID,
 ]
 
 WELCOME_CHANNEL_ID = 1503013291197202432
@@ -150,7 +154,7 @@ class VerificationView(View):
             )
         except discord.Forbidden:
             await interaction.response.send_message(
-                "❌ Bot posiada uprawnień do nadawania tej roli.", ephemeral=True
+                "❌ Bot posiada uprawnień do nadania tej roli.", ephemeral=True
             )
 
 
@@ -324,36 +328,35 @@ class SetupPanelView(View):
 
 
 # ==============================================================================
-# ABSOLUTNIE BEZBŁĘDNY SYSTEM LISTY PRACOWNIKÓW (SZUKANIE PO NAZWIE ROLI)
+# 100% BEZBŁĘDNY SYSTEM LISTY PRACOWNIKÓW (DOKŁADNA KOLEJNOŚĆ OD GÓRY DO DOŁU)
 # ==============================================================================
 async def update_employee_list(guild: discord.Guild):
     channel = guild.get_channel(EMPLOYEE_LIST_CHANNEL_ID)
     if not channel:
         return
 
-    # Definiujemy sekcje oraz dokładne nazwy ról na Discordzie (od najwyższej do najniższej)
-    roles_hierarchy = [
-        ("⟡ @👑 ⟡ Owner⟡", "Owner"),
-        ("⟡ @💫 ⟡ Co-Owner⟡", "Co-Owner"),
-        ("⟡ @✨ ⟡ Manager ⟡", "Manager"),
-        ("⟡ @⚡️ ⟡ Kierownik ⟡", "Kierownik"),
-        ("⟡ @🚕 ⟡ Specjalista ⟡", "Specjalista"),
-        ("⟡ @🐤 ⟡ Doświadczony ⟡", "Doświadczony"),
-        ("⟡ @💰 ⟡ Handlarz ⟡", "Handlarz"),
-        ("⟡ @🧸 ⟡ Świeżak ⟡", "Świeżak"),
-        ("⟡ @🛡️ ⟡ Ochrona  ⟡", "Ochrona"),
+    # Kolejność wyświetlania na liście (od najwyższej do najniższej rangi)
+    roles_config = [
+        ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
+        ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
+        ("⟡ @✨ ⟡ Manager ⟡", MANAGER_ROLE_ID),
+        ("⟡ @⚡️ ⟡ Kierownik ⟡", KIEROWNIK_ROLE_ID),
+        ("⟡ @🚕 ⟡ Specjalista ⟡", SPECJALISTA_ROLE_ID),
+        ("⟡ @🐤 ⟡ Doświadczony ⟡", DOSWIADCZONY_ROLE_ID),
+        ("⟡ @💰 ⟡ Handlarz ⟡", HANDLARZ_ROLE_ID),
+        ("⟡ @🧸 ⟡ Świeżak ⟡", SWIEZAK_ROLE_ID),
+        ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
     ]
 
     assigned_user_ids = set()
-    section_members = {header: [] for header, _ in roles_hierarchy}
+    section_members = {header: [] for header, _ in roles_config}
     total_employees = set()
 
-    # Iterujemy od góry do dołu wg ustalonej hierarchii komisu
-    for header, role_name in roles_hierarchy:
-        # Pobieramy rolę bezpośrednio po jej nazwie z serwera Discord
-        role = discord.utils.get(guild.roles, name=role_name)
+    # Pętla sprawdza role OD GÓRY DO DOŁU.
+    # Użytkownik jest przypisywany tylko raz do swojej najwyższej roli.
+    for header, role_id in roles_config:
+        role = guild.get_role(role_id)
         if role:
-            # Sortujemy członków alfabetycznie
             sorted_members = sorted(
                 role.members, key=lambda m: m.display_name.lower()
             )
@@ -364,7 +367,7 @@ async def update_employee_list(guild: discord.Guild):
                     total_employees.add(member.id)
 
     desc_lines = []
-    for header, _ in roles_hierarchy:
+    for header, _ in roles_config:
         desc_lines.append(f"> # {header}")
         members_list = section_members[header]
         if members_list:
@@ -707,7 +710,7 @@ class PodanieZarzadView(View):
             )
 
         guild = interaction.guild
-        swiezak_role = guild.get_role(GRADE1_ROLE_ID)
+        swiezak_role = guild.get_role(SWIEZAK_ROLE_ID)
         pracownik_role = guild.get_role(PRACOWNIK_ROLE_ID)
 
         try:
@@ -1124,7 +1127,7 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         )
 
     guild = interaction.guild
-    swiezak_role = guild.get_role(GRADE1_ROLE_ID)
+    swiezak_role = guild.get_role(SWIEZAK_ROLE_ID)
     pracownik_role = guild.get_role(PRACOWNIK_ROLE_ID)
 
     if not swiezak_role:
@@ -1219,7 +1222,7 @@ async def panel_oplat(interaction: Interaction):
         f" {end_of_week.strftime('%d.%m.%Y')}"
     )
 
-    role = guild.get_role(PRACOWNIK_ROLE_ID) or guild.get_role(GRADE1_ROLE_ID)
+    role = guild.get_role(PRACOWNIK_ROLE_ID) or guild.get_role(SWIEZAK_ROLE_ID)
     members_text = []
     if role:
         for m in role.members:
