@@ -297,10 +297,9 @@ class DecyzjaZarzaduView(View):
     except:
       pass
     embed = interaction.message.embeds[0]
-    embed.set_field_at(
-        3,
+    embed.add_field(
         name="📊 Status Decyzji",
-        value=f"✅ **Zatwierdzono przez {interaction.user.mention}**",
+        value=f"✅ **Zatwierdzone przez {interaction.user.mention}**",
         inline=False,
     )
     embed.color = discord.Color.green()
@@ -315,8 +314,7 @@ class DecyzjaZarzaduView(View):
           "❌ Brak uprawnień!", ephemeral=True
       )
     embed = interaction.message.embeds[0]
-    embed.set_field_at(
-        3,
+    embed.add_field(
         name="📊 Status Decyzji",
         value=f"❌ **Odrzucono przez {interaction.user.mention}**",
         inline=False,
@@ -684,10 +682,10 @@ class WelcomeTicketView(View):
               " wyślij swoje zgłoszenie w wiadomościach na tym kanale.\n\n"
               "**WZÓR PODANIA:**\n"
               "```text\n1. Imię:\n2. Nazwisko:\n3. Wiek:\n4. Mutacja:\n5. Stan"
-              " konta (zdjęcie):\n6. Ilość aut (zdjęcie):\n7. Czy pracowałeś"
-              " już kiedyś na komisie (jak tak to jakim):\n```\n\n"
-              "⏳ **Status:** Twoje podanie jest w trakcie rozpatrywania."
-              " Prosimy o cierpliwość i oczekiwanie na decyzję Zarządu."
+              " konta (zdjęcie):\n6. Ilość aut (zdjęcie):\n7. SS dowodu"
+              " osobistego (zdjęcie):\n8. Czy byłeś karany (jeśli tak, to za"
+              " co?):\n9. Czy pracowałeś już kiedyś na komisie (jeśli tak, to"
+              " jakim):\n```"
           ),
           color=discord.Color.gold(),
           timestamp=datetime.now(),
@@ -1030,4 +1028,3 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     client.run(TOKEN)
-
