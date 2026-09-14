@@ -1,9 +1,4 @@
-Zaktualizowałem Twój kod o wszystkie wymagane funkcje:
- * Autoryzacja przy akceptacji podania: Przycisk „Zaakceptuj” w podaniu automatycznie nadaje użytkownikowi rangę Świeżaka (GRADE1_ROLE_ID) oraz uprawnienia pracownicze (PRACOWNIK_ROLE_ID), zmienia kolor embeda na zielony i aktualizuje status.
- * Nowa profesjonalna wiadomość w ticketach: Po wysłaniu podania bot automatycznie informuje kandydata w profesjonalnym stylu: „Twoje podanie jest w trakcie rozpatrywania. Prosimy o cierpliwość i oczekiwanie na decyzję Zarządu.”
- * Komenda /skip (jako fajna alternatywa dla !skip): Dodałem komendę slash /skip (oraz alternatywę wiadomościową), która pozwala Zarządowi w szybki sposób „przeskoczyć” dany ticket lub oznaczyć go jako priorytetowy do sprawdzenia, wysyłając eleganckie powiadomienie administracyjne na kanale.
- * Poprawiona kategoria: Podania trafiają teraz poprawnie do kategorii 📄 ⟡ 𝐏𝐨𝐝𝐚𝐧𝐢𝐚.
-Oto gotowy, zaktualizowany kod bota:
+Proszę bardzo! Oto całkowicie gotowy, czysty kod wolny od błędnych cudzysłowów typograficznych (wszystkie stringi używają zwykłych " lub '). Możesz go bezpośrednio skopiować i wkleić do swojego pliku bot.py:
 from datetime import datetime
 import os
 import threading
@@ -430,8 +425,8 @@ class PowodHRModal(Modal):
 
   def __init__(self, action_type: str, pracownik: discord.Member):
     title_map = {
-        "awans": "📄 Podaj powód awansu",
-        "degrad": "📄 Podaj powód degradacji",
+        "awans": "Podaj powód awansu",
+        "degrad": "Podaj powód degradacji",
     }
     super().__init__(title=title_map.get(action_type, "Powód HR"))
     self.action_type = action_type
@@ -699,7 +694,6 @@ class WelcomeTicketView(View):
           timestamp=datetime.now(),
       )
       embed.set_footer(text="Pieniążek Auto OSLORP • System Podaniowy")
-      # Dołączamy dedykowany widok z przyciskami zarządzania podaniem dla zarządu
       zarzad_view = PodanieZarzadView(applicant=interaction.user)
       await ticket_channel.send(
           content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
@@ -839,7 +833,8 @@ async def setup_panel(interaction: Interaction):
     name="skip",
     description="Oznacza ticket jako pominięty lub przenosi do archiwum uwagi",
 )
-async def skip_ticket(interaction: Interaction, powód: str = "Brak"):
+@app_commands.describe(powod="Powód pominięcia ticketa")
+async def skip_ticket(interaction: Interaction, powod: str = "Brak"):
   if not is_zarzad(interaction.user):
     return await interaction.response.send_message(
         "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
@@ -849,7 +844,7 @@ async def skip_ticket(interaction: Interaction, powód: str = "Brak"):
       title="⏭️ TICKET POMINIĘTY / ARCHIWIZOWANY",
       description=(
           f"Zarząd {interaction.user.mention} oznaczył ten ticket jako"
-          f" pominięty.\n\n**Powód:** `{powód}`"
+          f" pominięty.\n\n**Powód:** `{powod}`"
       ),
       color=discord.Color.orange(),
       timestamp=datetime.now(),
