@@ -56,9 +56,9 @@ GRADES = [
 VERIFY_ROLE_ID = 1503009366985408553
 WELCOME_CHANNEL_ID = 1503013291197202432
 
-# URL grafiki powitalnej (baner na dole embeda)
+# Zaktualizowany URL grafiki powitalnej (komisowy baner z grafiką)
 WELCOME_IMAGE_URL = (
-    "https://images.unsplash.com/photo-1503376780353-7e6692767b70"  # Podmień na link do swojego banera
+    "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_7.png"  # <- Podmień na bezpośredni link (URL) do załączonego obrazka z komisem (image_7.png)
 )
 
 
@@ -372,22 +372,12 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY (ZE SCREENA: Weryfikacja, Ustaw dane, Kontakt, Podanie)
+# GŁÓWNY WIDOK POWITALNY (Weryfikacja, Ustaw dane, Podanie, Pomoc - bez Kontaktu)
 # ==============================================================================
 class WelcomeTicketView(View):
 
   def __init__(self):
     super().__init__(timeout=None)
-    # Dodanie przycisku typu Link programowo (naprawa błędu z dekoratorem url)
-    self.add_item(
-        Button(
-            label="Kontakt",
-            style=ButtonStyle.link,
-            url="https://discord.com",  # Podmień na link do kanału kontaktowego
-            emoji="🗂️",
-            row=0,
-        )
-    )
 
   # Rząd 1: Przycisk weryfikacji / statusu Gościa
   @button(
@@ -678,7 +668,7 @@ async def raport(
   )
 
 
-@client.tree.command(
+@client.temp_command if hasattr(client, 'temp_command') else client.tree.command(
     name="mandat", description="Wystaw mandat pracownikowi (Tylko dla Zarządu)"
 )
 async def mandat(interaction: Interaction, pracownik: discord.Member):
