@@ -63,6 +63,7 @@ GRADE_NAMES = {
 }
 
 WELCOME_CHANNEL_ID = 1503013291197202432
+AWANS_LOG_CHANNEL_ID = 1503013291197202432  # Kanał na logi awansów/degradów/zwolnień (możesz zmienić ID na dedykowany kanał)
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
 )
@@ -239,137 +240,6 @@ class MandatView(View):
   def __init__(self, ukarany: discord.Member, wystawiajacy: discord.Member):
     super().__init__(timeout=60)
     self.add_item(MandatReasonSelect(ukarany, wystawiajacy))
-
-
-# ==============================================================================
-# AUTOMATYCZNY SYSTEM ZARZĄDZANIA KADRAMI (/ZARZĄDZAJ)
-# ==============================================================================
-class ZarzadzajSelect(Select):
-
-  def __init__(self, target_member: discord.Member):
-    self.target_member = target_member
-    options = [
-        discord.SelectOption(
-            label="📈 Awans",
-            value="awans",
-            description="Automatycznie awansuj pracownika o 1 rangę wyżej",
-            emoji="🟢",
-        ),
-        discord.SelectOption(
-            label="📉 Degrad",
-            value="degrad",
-            description="Automatycznie degraduj pracownika o 1 rangę niżej",
-            emoji="🟠",
-        ),
-        discord.SelectOption(
-            label="❌ Zwolnienie",
-            value="zwolnienie",
-            description="Natychmiastowo zwolnij pracownika (odeberz rangi)",
-            emoji="🔴",
-        ),
-    ]
-    super().__init__(
-        placeholder="Wybierz akcję zarządzania pracownikiem...",
-        min_values=1,
-        max_values=1,
-        options=options,
-    )
-
-  async def callback(self, interaction: Interaction):
-    akcja = self.values[0]
-    guild = interaction.guild
-    current_index = get_current_grade_index(self.target_member)
-
-    if akcja == "zwolnienie":
-      roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
-      try:
-        if roles_to_remove:
-          await self.target_member.remove_roles(*roles_to_remove)
-        await interaction.response.edit_message(
-            content=(
-                f"❌ Pracownik {self.target_member.mention} został zwolniony i"
-                " odebrano mu rangi pracownicze."
-            ),
-            view=None,
-        )
-      except discord.Forbidden:
-        await interaction.response.edit_message(
-            content="⚠️ Bot nie ma uprawnień do edycji ról tego użytkownika!",
-            view=None,
-        )
-      return
-
-    if current_index == -1:
-      await interaction.response.edit_message(
-          content=(
-              f"❌ Użytkownik {self.target_member.mention} nie posiada żadnej"
-              " oficjalnej rangi pracowniczej!"
-          ),
-          view=None,
-      )
-      return
-
-    if akcja == "awans":
-      if current_index + 1 >= len(GRADES):
-        await interaction.response.edit_message(
-            content=(
-                f"⚠️ Pracownik {self.target_member.mention} posiada już"
-                " **najwyższą** możliwą rangę!"
-            ),
-            view=None,
-        )
-        return
-      new_role_id = GRADES[current_index + 1]
-    else:
-      if current_index - 1 < 0:
-        await interaction.response.edit_message(
-            content=(
-                f"⚠️ Pracownik {self.target_member.mention} posiada już"
-                " **najniższą** możliwą rangę!"
-            ),
-            view=None,
-        )
-        return
-      new_role_id = GRADES[current_index - 1]
-
-    new_role = guild.get_role(new_role_id)
-    if not new_role:
-      await interaction.response.edit_message(
-          content="❌ Nie znaleziono docelowej rangi na serwerze!", view=None
-      )
-      return
-
-    old_roles_to_remove = [
-        r for r in self.target_member.roles if r.id in GRADES
-    ]
-
-    try:
-      if old_roles_to_remove:
-        await self.target_member.remove_roles(*old_roles_to_remove)
-      await self.target_member.add_roles(new_role)
-
-      komunikat_akcji = (
-          "Awansowano" if akcja == "awans" else "Zdegradowano"
-      )
-      await interaction.response.edit_message(
-          content=(
-              f"✅ {komunikat_akcji} pracownika {self.target_member.mention} na"
-              f" nowe stanowisko: **{new_role.name}**."
-          ),
-          view=None,
-      )
-    except discord.Forbidden:
-      await interaction.response.edit_message(
-          content="⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!",
-          view=None,
-      )
-
-
-class ZarzadzajView(View):
-
-  def __init__(self, target_member: discord.Member):
-    super().__init__(timeout=60)
-    self.add_item(ZarzadzajSelect(target_member))
 
 
 # ==============================================================================
@@ -678,17 +548,123 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   )
 
 
-@client.tree.command(name="zarzadzaj", description="Zarządzaj rangami pracownika")
-async def zarzadzaj(interaction: Interaction, pracownik: discord.Member):
+@client.tree.command(name="awans", description="Awansuj pracownika i wyślij profesjonalny embed")
+@app_commands.describe(pracownik="Pracownik, którego chcesz awansować")
+async def awans(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    return await interaction.response.send_message(
-        "❌ Brak uprawnień!", ephemeral=True
-    )
-  await interaction.response.send_message(
-      f"⚙️ Wybierz akcję dla {pracownik.mention}:",
-      view=ZarzadzajView(pracownik),
-      ephemeral=True,
+    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+
+  current_index = get_current_grade_index(pracownik)
+  if current_index == -1:
+    return await interaction.response.send_message(f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!", ephemeral=True)
+  
+  if current_index + 1 >= len(GRADES):
+    return await interaction.response.send_message(f"⚠️ Pracownik {pracownik.mention} posiada już **najwyższą** możliwą rangę!", ephemeral=True)
+
+  old_role_id = GRADES[current_index]
+  new_role_id = GRADES[current_index + 1]
+  
+  old_role = interaction.guild.get_role(old_role_id)
+  new_role = interaction.guild.get_role(new_role_id)
+
+  try:
+    if old_role:
+      await pracownik.remove_roles(old_role)
+    await pracownik.add_roles(new_role)
+  except discord.Forbidden:
+    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True)
+
+  embed = discord.Embed(
+      title="🟢 OFICJALNY AWANS PRACOWNIKA",
+      description=f"Gratulacje dla pracownika {pracownik.mention} za świetną pracę i zaangażowanie!",
+      color=discord.Color.green(),
+      timestamp=datetime.now()
   )
+  embed.set_thumbnail(url=pracownik.display_avatar.url)
+  embed.add_field(name="👤 Awansowany", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
+  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
+  embed.add_field(name="📈 Poprzednia Ranga", value=f"`{old_role.name if old_role else 'Brak'}`", inline=False)
+  embed.add_field(name="🚀 Nowa Ranga", value=f"**{new_role.name}**", inline=False)
+  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
+  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(f"✅ Pomyślnie awansowano pracownika {pracownik.mention} na stanowisko **{new_role.name}**!", ephemeral=True)
+
+
+@client.tree.command(name="degrad", description="Zdegraduj pracownika i wyślij profesjonalny embed")
+@app_commands.describe(pracownik="Pracownik, którego chcesz zdegradować")
+async def degrad(interaction: Interaction, pracownik: discord.Member):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+
+  current_index = get_current_grade_index(pracownik)
+  if current_index == -1:
+    return await interaction.response.send_message(f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!", ephemeral=True)
+  
+  if current_index - 1 < 0:
+    return await interaction.response.send_message(f"⚠️ Pracownik {pracownik.mention} posiada już **najniższą** możliwą rangę!", ephemeral=True)
+
+  old_role_id = GRADES[current_index]
+  new_role_id = GRADES[current_index - 1]
+  
+  old_role = interaction.guild.get_role(old_role_id)
+  new_role = interaction.guild.get_role(new_role_id)
+
+  try:
+    if old_role:
+      await pracownik.remove_roles(old_role)
+    await pracownik.add_roles(new_role)
+  except discord.Forbidden:
+    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True)
+
+  embed = discord.Embed(
+      title="🟠 OFICJALNA DEGRADACJA PRACOWNIKA",
+      description=f"Pracownik {pracownik.mention} został zdegradowany z powodu decyzji zarządu.",
+      color=discord.Color.orange(),
+      timestamp=datetime.now()
+  )
+  embed.set_thumbnail(url=pracownik.display_avatar.url)
+  embed.add_field(name="👤 Zdegradowany", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
+  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
+  embed.add_field(name="📉 Poprzednia Ranga", value=f"`{old_role.name if old_role else 'Brak'}`", inline=False)
+  embed.add_field(name="📉 Nowa Ranga", value=f"**{new_role.name}**", inline=False)
+  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
+  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(f"✅ Pomyślnie zdegradowano pracownika {pracownik.mention} na stanowisko **{new_role.name}**!", ephemeral=True)
+
+
+@client.tree.command(name="zwolnienie", description="Zwolnij pracownika i wyślij profesjonalny embed")
+@app_commands.describe(pracownik="Pracownik, którego chcesz zwolnić")
+async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+
+  roles_to_remove = [r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID]
+  
+  try:
+    if roles_to_remove:
+      await pracownik.remove_roles(*roles_to_remove)
+  except discord.Forbidden:
+    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do odebrania ról temu użytkownikowi!", ephemeral=True)
+
+  embed = discord.Embed(
+      title="🔴 ZWOLNIENIE Z PRACOWNICZYCH SZEREGÓW",
+      description=f"Pracownik {pracownik.mention} został zwolniony z komisu **Pieniążek Auto**.",
+      color=discord.Color.red(),
+      timestamp=datetime.now()
+  )
+  embed.set_thumbnail(url=pracownik.display_avatar.url)
+  embed.add_field(name="👤 Zwolniony", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
+  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
+  embed.add_field(name="📊 Status", value="**Zwolniony / Odrzucony z kadry**", inline=False)
+  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
+  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(f"✅ Pracownik {pracownik.mention} został pomyślnie zwolniony, a jego rangi pracownicze zostały odebrane.", ephemeral=True)
 
 
 @client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie")
