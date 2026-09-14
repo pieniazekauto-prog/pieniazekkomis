@@ -63,7 +63,7 @@ GRADE_NAMES = {
 }
 
 WELCOME_CHANNEL_ID = 1503013291197202432
-AWANS_LOG_CHANNEL_ID = 1503013291197202432  # Kanał na logi awansów/degradów/zwolnień (możesz zmienić ID na dedykowany kanał)
+AWANS_LOG_CHANNEL_ID = 1503394099661639680  # Dedykowany kanał na awansy, degrady i zwolnienia
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
 )
@@ -690,7 +690,7 @@ async def raport(
       timestamp=datetime.now(),
   )
   embed.add_field(name="👤 Kto:", value=f"{interaction.user.mention}")
-  embed.add_field(name="💰 Za ile:", value=f"`{kwota}`")
+  embed.add_field(name="💰 Za ile:", value=`{kwota}`)
   if dowod.content_type and "image" in dowod.content_type:
     embed.set_image(url=dowod.url)
   await interaction.response.send_message(
