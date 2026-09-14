@@ -378,6 +378,16 @@ class WelcomeTicketView(View):
 
   def __init__(self):
     super().__init__(timeout=None)
+    # Dodanie przycisku typu Link programowo (naprawa błędu z dekoratorem url)
+    self.add_item(
+        Button(
+            label="Kontakt",
+            style=ButtonStyle.link,
+            url="https://discord.com",  # Podmień na link do kanału kontaktowego
+            emoji="🗂️",
+            row=0,
+        )
+    )
 
   # Rząd 1: Przycisk weryfikacji / statusu Gościa
   @button(
@@ -386,6 +396,7 @@ class WelcomeTicketView(View):
       custom_id="status_gosc_btn",
       emoji="👤",
       disabled=True,
+      row=0,
   )
   async def status_gosc(
       self, interaction: Interaction, button: discord.ui.Button
@@ -398,23 +409,12 @@ class WelcomeTicketView(View):
       style=ButtonStyle.secondary,
       custom_id="ustaw_dane_modal_btn",
       emoji="✏️",
+      row=0,
   )
   async def ustaw_dane(
       self, interaction: Interaction, button: discord.ui.Button
   ):
     await interaction.response.send_modal(UstawDaneModal())
-
-  # Rząd 1 / 2: Przycisk Linku do Kontaktu
-  @button(
-      label="Kontakt",
-      style=ButtonStyle.link,
-      url="https://discord.com",  # Podmień na link do kanału kontaktowego
-      emoji="🗂️",
-  )
-  async def kontakt_link(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    pass
 
   # Rząd 2: Przycisk Podania o pracę (Tworzy prywatny ticket)
   @button(
@@ -422,6 +422,7 @@ class WelcomeTicketView(View):
       style=ButtonStyle.blurple,
       custom_id="ticket_job_btn",
       emoji="📄",
+      row=1,
   )
   async def ticket_job(
       self, interaction: Interaction, button: discord.ui.Button
@@ -436,6 +437,7 @@ class WelcomeTicketView(View):
       style=ButtonStyle.gray,
       custom_id="ticket_help_btn",
       emoji="🛠️",
+      row=1,
   )
   async def ticket_help(
       self, interaction: Interaction, button: discord.ui.Button
