@@ -33,7 +33,7 @@ GUILD_ID = 1503007115956977706  # ID Twojego serwera
 ZARZAD_ROLE_ID = 1503151943688654958  # ID Roli Zarządu
 PRACOWNIK_ROLE_ID = 1503009723543191782  # ID Roli Pracownika (Weryfikacji)
 
-# DOKŁADNE ID RÓL Z TWOJEJ LISTY
+# DOKŁADNE ID RÓL
 OWNER_ROLE_ID = 1503010247130746983
 CO_OWNER_ROLE_ID = 1547339984992731146
 MANAGER_ROLE_ID = 1503009931589062727
@@ -44,7 +44,7 @@ HANDLARZ_ROLE_ID = 1547342288231862303
 SWIEZAK_ROLE_ID = 1547341972484661318
 OCHRONA_ROLE_ID = 1547694612070666260
 
-# Hierarchia rang do systemu awansów/degradacji (od najniższej do najwyższej)
+# Hierarchia rang (od najniższej do najwyższej do systemu awansów)
 GRADES = [
     SWIEZAK_ROLE_ID,
     HANDLARZ_ROLE_ID,
@@ -328,14 +328,13 @@ class SetupPanelView(View):
 
 
 # ==============================================================================
-# 100% BEZBŁĘDNY SYSTEM LISTY PRACOWNIKÓW (DOKŁADNA KOLEJNOŚĆ OD GÓRY DO DOŁU)
+# SYSTEM LISTY PRACOWNIKÓW
 # ==============================================================================
 async def update_employee_list(guild: discord.Guild):
     channel = guild.get_channel(EMPLOYEE_LIST_CHANNEL_ID)
     if not channel:
         return
 
-    # Kolejność wyświetlania na liście (od najwyższej do najniższej rangi)
     roles_config = [
         ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
@@ -352,8 +351,6 @@ async def update_employee_list(guild: discord.Guild):
     section_members = {header: [] for header, _ in roles_config}
     total_employees = set()
 
-    # Pętla sprawdza role OD GÓRY DO DOŁU.
-    # Użytkownik jest przypisywany tylko raz do swojej najwyższej roli.
     for header, role_id in roles_config:
         role = guild.get_role(role_id)
         if role:
@@ -413,61 +410,76 @@ class EmployeePanelView(View):
         )
 
 
-class FeeSearchModal(Modal, title="Wyszukaj pracownika (Opłaty)"):
-    search_query = TextInput(
-        label="Imię, nazwisko lub wzmianka",
-        placeholder="Wpisz fragment nicku pracownika...",
-        required=True,
-    )
-
-    async def on_submit(self, interaction: Interaction):
-        query = self.search_query.value.lower().strip()
-        embed = interaction.message.embeds[0]
-        content = embed.description
-
-        lines = content.split("\n")
-        matched_lines = []
-        for line in lines:
-            if query in line.lower() and ("✅" in line or "❌" in line):
-                matched_lines.append(line)
-
-        if not matched_lines:
-            return await interaction.response.send_message(
-                f"❌ Nie znaleziono pracownika pasującego do: **{query}**",
-                ephemeral=True,
-            )
-
-        target_line = matched_lines[0]
-        if "❌" in target_line:
-            new_line = target_line.replace("❌", "✅")
-        else:
-            new_line = target_line.replace("✅", "❌")
-
-        embed.description = content.replace(target_line, new_line)
-        await interaction.message.edit(embed=embed)
-        await interaction.response.send_message(
-            f"✅ Zmieniono status dla pasującego wpisu:\n`{target_line}` ➡️"
-            f" `{new_line}`",
-            ephemeral=True,
+# ==============================================================================
+# NOWY PROFESJONALNY SYSTEM OPŁAT TYGODNIOWYCH
+# ==============================================================================
+async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
+    if not custom_date_str:
+        today = datetime.now()
+        start_of_week = today - timedelta(days=today.weekday())
+        end_of_week = start_of_week + timedelta(days=6)
+        date_str = (
+            f"{start_of_week.strftime('%d.%m.%Y')} do"
+            f" {end_of_week.strftime('%d.%m.%Y')}"
         )
+    else:
+        date_str = custom_date_str
 
+    roles_config = [
+        ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
+        ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
+        ("⟡ @✨ ⟡ Manager ⟡", MANAGER_ROLE_ID),
+        ("⟡ @⚡️ ⟡ Kierownik ⟡", KIEROWNIK_ROLE_ID),
+        ("⟡ @🚕 ⟡ Specjalista ⟡", SPECJALISTA_ROLE_ID),
+        ("⟡ @🐤 ⟡ Doświadczony ⟡", DOSWIADCZONY_ROLE_ID),
+        ("⟡ @💰 ⟡ Handlarz ⟡", HANDLARZ_ROLE_ID),
+        ("⟡ @🧸 ⟡ Świeżak ⟡", SWIEZAK_ROLE_ID),
+        ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
+    ]
 
-class FeesView(View):
+    assigned_user_ids = set()
+    section_members = {header: [] for header, _ in roles_config}
 
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @button(
-        label="🔍 Wyszukaj i zmień status opłaty",
-        style=ButtonStyle.primary,
-        custom_id="fee_search_btn",
-    )
-    async def search_fee(self, interaction: Interaction, button: Button):
-        if not is_zarzad(interaction.user):
-            return await interaction.response.send_message(
-                "❌ Brak uprawnień do zmiany opłat!", ephemeral=True
+    for header, role_id in roles_config:
+        role = guild.get_role(role_id)
+        if role:
+            sorted_members = sorted(
+                role.members, key=lambda m: m.display_name.lower()
             )
-        await interaction.response.send_modal(FeeSearchModal())
+            for member in sorted_members:
+                if member.id not in assigned_user_ids:
+                    assigned_user_ids.add(member.id)
+                    section_members[header].append(member)
+
+    desc_lines = [f"**Okres rozliczeniowy:** `{date_str}`\n"]
+    total_count = 0
+
+    for header, _ in roles_config:
+        desc_lines.append(f"> # {header}")
+        members_list = section_members[header]
+        if members_list:
+            for m in members_list:
+                desc_lines.append(f"- {m.display_name} | {m.mention} ❌")
+                total_count += 1
+        else:
+            desc_lines.append("-")
+        desc_lines.append("")
+
+    desc_lines.append(f"## Łącznie pracowników: `{total_count}`")
+
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO | OPŁATY TYGODNIOWE",
+        description="\n".join(desc_lines),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_footer(
+        text=(
+            "© Pieniążek Auto OSLORP | System Opłat • Użyj /oplata <użytkownik>"
+            " aby zmienić status"
+        )
+    )
+    return embed
 
 
 # ==============================================================================
@@ -1010,12 +1022,12 @@ class MyClient(discord.Client):
         self.add_view(VerificationView())
         self.add_view(SetupPanelView())
         self.add_view(EmployeePanelView())
-        self.add_view(FeesView())
 
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
         self.auto_refresh_loop.start()
+        self.sunday_fees_loop.start()
 
     @tasks.loop(minutes=10)
     async def auto_refresh_loop(self):
@@ -1026,8 +1038,40 @@ class MyClient(discord.Client):
             except Exception as e:
                 print(f"Błąd automatycznego odświeżania listy: {e}")
 
+    # Pętla sprawdzająca co godzinę, czy dzisiaj jest niedziela i godzina 12:00 -> Generuje nowy panel opłat
+    @tasks.loop(hours=1)
+    async def sunday_fees_loop(self):
+        now = datetime.now()
+        if now.weekday() == 6 and now.hour == 12:  # 6 to niedziela
+            guild = self.get_guild(GUILD_ID)
+            if guild:
+                fees_channel = guild.get_channel(FEES_CHANNEL_ID)
+                if fees_channel:
+                    try:
+                        # Sprawdzamy, czy w ciągu ostatnich 23h był już wysłany panel, żeby nie wysłać wielokrotnie
+                        async for msg in fees_channel.history(limit=5):
+                            if (
+                                msg.author == guild.me
+                                and msg.embeds
+                                and "OPŁATY TYGODNIOWE"
+                                in msg.embeds[0].title
+                            ):
+                                # Jeśli stworzono już dzisiaj, pomijamy
+                                if (
+                                    datetime.now() - msg.created_at
+                                ).total_seconds() < 86400:
+                                    return
+                        new_embed = await generate_fees_embed(guild)
+                        await fees_channel.send(embed=new_embed)
+                    except Exception as e:
+                        print(f"Błąd niedzielnego auto-tworzenia opłat: {e}")
+
     @auto_refresh_loop.before_loop
     async def before_auto_refresh(self):
+        await self.wait_until_ready()
+
+    @sunday_fees_loop.before_loop
+    async def before_sunday_fees(self):
         await self.wait_until_ready()
 
 
@@ -1199,9 +1243,10 @@ async def panel_pracownikow(interaction: Interaction):
 
 
 @client.tree.command(
-    name="panel_oplat", description="Tworzy cotygodniowy panel opłat pracowniczych"
+    name="panel_oplat", description="Tworzy panel opłat pracowniczych na dany tydzień"
 )
-async def panel_oplat(interaction: Interaction):
+@app_commands.describe(zakres_dat="Opcjonalnie np. 14.09.2026 do 20.09.2026")
+async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
             "❌ Brak uprawnień!", ephemeral=True
@@ -1214,37 +1259,136 @@ async def panel_oplat(interaction: Interaction):
             "❌ Nie znaleziono kanału opłat!", ephemeral=True
         )
 
-    today = datetime.now()
-    start_of_week = today - timedelta(days=today.weekday())
-    end_of_week = start_of_week + timedelta(days=6)
-    date_str = (
-        f"{start_of_week.strftime('%d.%m.%Y')} do"
-        f" {end_of_week.strftime('%d.%m.%Y')}"
-    )
-
-    role = guild.get_role(PRACOWNIK_ROLE_ID) or guild.get_role(SWIEZAK_ROLE_ID)
-    members_text = []
-    if role:
-        for m in role.members:
-            members_text.append(f"- {m.display_name} | {m.mention} ❌")
-
-    embed = discord.Embed(
-        title=f"✦ PIENIĄŻEK AUTO | OPŁATY TYGODNIOWE",
-        description=(
-            f"**Okres rozliczeniowy:** `{date_str}`\n\n"
-            + ("\n".join(members_text) if members_text else "Brak pracowników.")
-            + "\n\n> *Kliknij przycisk poniżej, aby wyszukać pracownika i"
-            " zmienić status opłaty.*"
-        ),
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
-    )
-    embed.set_footer(text="© Pieniążek Auto OSLORP | System Opłat Tygodniowych")
-
-    await fees_channel.send(embed=embed, view=FeesView())
+    embed = await generate_fees_embed(guild, zakres_dat)
+    await fees_channel.send(embed=embed)
     await interaction.response.send_message(
         f"✅ Pomyślnie utworzono nowy panel opłat na kanale"
         f" {fees_channel.mention}!",
+        ephemeral=True,
+    )
+
+
+@client.tree.command(
+    name="oplata", description="Zmienia status opłaty wybranego pracownika (❌ / ✅)"
+)
+@app_commands.describe(pracownik="Wybierz pracownika z listy")
+async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień do zmiany opłat!", ephemeral=True
+        )
+
+    fees_channel = interaction.guild.get_channel(FEES_CHANNEL_ID)
+    if not fees_channel:
+        return await interaction.response.send_message(
+            "❌ Nie znaleziono kanału opłat!", ephemeral=True
+        )
+
+    target_message = None
+    target_embed = None
+    async for message in fees_channel.history(limit=10):
+        if (
+            message.author == interaction.guild.me
+            and message.embeds
+            and "OPŁATY TYGODNIOWE" in message.embeds[0].title
+        ):
+            target_message = message
+            target_embed = message.embeds[0]
+            break
+
+    if not target_message or not target_embed:
+        return await interaction.response.send_message(
+            "❌ Nie znaleziono aktywnego panelu opłat na kanale opłat!",
+            ephemeral=True,
+        )
+
+    content = target_embed.description
+    lines = content.split("\n")
+    found = False
+    updated_lines = []
+
+    for line in lines:
+        if str(pracownik.id) in line and ("❌" in line or "✅" in line):
+            found = True
+            if "❌" in line:
+                new_line = line.replace("❌", "✅")
+            else:
+                new_line = line.replace("✅", "❌")
+            updated_lines.append(new_line)
+        else:
+            updated_lines.append(line)
+
+    if not found:
+        # Jeśli pracownika nie było jeszcze w embedzie (np. świeżo zatrudniony), dodajemy go dynamicznie do odpowiedniej sekcji
+        # Szukamy po rolach użytkownika, do której sekcji pasuje
+        user_grade_header = None
+        roles_config = [
+            ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
+            ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
+            ("⟡ @✨ ⟡ Manager ⟡", MANAGER_ROLE_ID),
+            ("⟡ @⚡️ ⟡ Kierownik ⟡", KIEROWNIK_ROLE_ID),
+            ("⟡ @🚕 ⟡ Specjalista ⟡", SPECJALISTA_ROLE_ID),
+            ("⟡ @🐤 ⟡ Doświadczony ⟡", DOSWIADCZONY_ROLE_ID),
+            ("⟡ @💰 ⟡ Handlarz ⟡", HANDLARZ_ROLE_ID),
+            ("⟡ @🧸 ⟡ Świeżak ⟡", SWIEZAK_ROLE_ID),
+            ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
+        ]
+        for header, r_id in roles_config:
+            if any(r.id == r_id for r in pracownik.roles):
+                user_grade_header = header
+                break
+
+        if user_grade_header:
+            rebuilt_lines = []
+            in_target_section = False
+            added = False
+            for line in updated_lines:
+                if user_grade_header in line:
+                    in_target_section = True
+                    rebuilt_lines.append(line)
+                    continue
+                if in_target_section:
+                    if line.startswith("> #") or line.startswith("##"):
+                        # Koniec sekcji, wrzucamy przed nią nowego pracownika
+                        if not added:
+                            # Usuwamy poprzednią pustą kreskę '-' jeśli była samotna
+                            if (
+                                rebuilt_lines
+                                and rebuilt_lines[-1].strip() == "-"
+                            ):
+                                rebuilt_lines.pop()
+                            rebuilt_lines.append(
+                                f"- {pracownik.display_name} |"
+                                f" {pracownik.mention} ✅"
+                            )
+                            rebuilt_lines.append("")
+                            added = True
+                        in_target_section = False
+                    elif line.strip() == "-" and not added:
+                        rebuilt_lines.pop()  # usuwamy minusa
+                        rebuilt_lines.append(
+                            f"- {pracownik.display_name} | {pracownik.mention} ✅"
+                        )
+                        added = True
+                        in_target_section = False
+                rebuilt_lines.append(line)
+
+            if not added:
+                rebuilt_lines.append(
+                    f"- {pracownik.display_name} | {pracownik.mention} ✅"
+                )
+            updated_lines = rebuilt_lines
+        else:
+            return await interaction.response.send_message(
+                f"❌ Pracownik {pracownik.mention} nie posiada przypisanej rangi"
+                " pracowniczej w systemie!",
+                ephemeral=True,
+            )
+
+    target_embed.description = "\n".join(updated_lines)
+    await target_message.edit(embed=target_embed)
+    await interaction.response.send_message(
+        f"✅ Pomyślnie zaktualizowano status opłaty dla {pracownik.mention}!",
         ephemeral=True,
     )
 
