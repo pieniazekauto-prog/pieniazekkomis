@@ -56,10 +56,8 @@ GRADES = [
 VERIFY_ROLE_ID = 1503009366985408553
 WELCOME_CHANNEL_ID = 1503013291197202432
 
-# Zaktualizowany URL grafiki powitalnej (komisowy baner z grafiką)
-WELCOME_IMAGE_URL = (
-    "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_7.png"  # <- Podmień na bezpośredni link (URL) do załączonego obrazka z komisem (image_7.png)
-)
+# URL grafiki powitalnej (komisowy baner)
+WELCOME_IMAGE_URL = "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_7.png"
 
 
 # ==============================================================================
@@ -372,14 +370,13 @@ class DecyzjaZarzaduView(View):
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY (Weryfikacja, Ustaw dane, Podanie, Pomoc - bez Kontaktu)
+# GŁÓWNY WIDOK POWITALNY
 # ==============================================================================
 class WelcomeTicketView(View):
 
   def __init__(self):
     super().__init__(timeout=None)
 
-  # Rząd 1: Przycisk weryfikacji / statusu Gościa
   @button(
       label="Gość",
       style=ButtonStyle.secondary,
@@ -393,7 +390,6 @@ class WelcomeTicketView(View):
   ):
     pass
 
-  # Rząd 1: Przycisk ustawiania danych IC (otwierający okienko Modal)
   @button(
       label="Ustaw dane",
       style=ButtonStyle.secondary,
@@ -406,7 +402,6 @@ class WelcomeTicketView(View):
   ):
     await interaction.response.send_modal(UstawDaneModal())
 
-  # Rząd 2: Przycisk Podania o pracę (Tworzy prywatny ticket)
   @button(
       label="Podanie o pracę",
       style=ButtonStyle.blurple,
@@ -421,7 +416,6 @@ class WelcomeTicketView(View):
         interaction, "podanie", "📄 ⟡ 𝐏𝐨𝐝𝐚𝐧𝐢𝐚", "Podanie o pracę"
     )
 
-  # Rząd 2: Przycisk Pomocy / Zarządu (Tworzy prywatny ticket)
   @button(
       label="Pomoc / Zarząd",
       style=ButtonStyle.gray,
@@ -493,7 +487,16 @@ class TicketCloseView(View):
   async def close_ticket(
       self, interaction: Interaction, button: discord.ui.Button
   ):
-    await interaction.response.send_message("Zamykanie kanału za 3 sekundy...")
+    # Sprawdzenie czy użytkownik zamykający ticket ma uprawnienia Zarządu
+    if not is_zarzad(interaction.user):
+      await interaction.response.send_message(
+          "❌ Tylko Zarząd może zamknąć/usunąć ten ticket!", ephemeral=True
+      )
+      return
+
+    await interaction.response.send_message(
+        "🔒 Ticket został zamknięty przez Zarząd. Usuwanie kanału za 3 sekundy..."
+    )
     import asyncio
 
     await asyncio.sleep(3)
@@ -668,7 +671,7 @@ async def raport(
   )
 
 
-@client.temp_command if hasattr(client, 'temp_command') else client.tree.command(
+@client.tree.command(
     name="mandat", description="Wystaw mandat pracownikowi (Tylko dla Zarządu)"
 )
 async def mandat(interaction: Interaction, pracownik: discord.Member):
@@ -696,3 +699,4 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     client.run(TOKEN)
+
