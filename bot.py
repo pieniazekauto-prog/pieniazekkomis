@@ -145,7 +145,7 @@ class VerificationView(View):
       )
     except discord.Forbidden:
       await interaction.response.send_message(
-          "❌ Bot nie posiada uprawnień do nadawania tej roli.", ephemeral=True
+          "❌ Bot posiada uprawnień do nadawania tej roli.", ephemeral=True
       )
 
 
@@ -297,7 +297,6 @@ class SetupPanelView(View):
       emoji="📄",
   )
   async def ticket_podanie(self, interaction: Interaction, button: Button):
-    # Wykorzystujemy logikę tworzenia ticketu z głównej klasy
     temp_obj = WelcomeTicketView()
     await temp_obj.create_ticket(
         interaction, "podanie", "📄 ⟡ 𝐏𝐨𝐝𝐚𝐧𝐢𝐚", "podanie"
@@ -914,6 +913,74 @@ async def setup_panel(interaction: Interaction):
   await interaction.channel.send(embed=embed, view=SetupPanelView())
   await interaction.response.send_message(
       "✅ Pomyślnie wysłano panel!", ephemeral=True
+  )
+
+
+@client.tree.command(
+    name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak"
+)
+async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
+  if not is_zarzad(interaction.user):
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
+    )
+
+  guild = interaction.guild
+  swiezak_role = guild.get_role(GRADE1_ROLE_ID)
+  pracownik_role = guild.get_role(PRACOWNIK_ROLE_ID)
+
+  if not swiezak_role:
+    return await interaction.response.send_message(
+        "❌ Nie znaleziono roli Świeżak (ID: 1547341972484661318) na"
+        " serwerze!",
+        ephemeral=True,
+    )
+
+  roles_to_add = [swiezak_role]
+  if pracownik_role and pracownik_role not in pracownik.roles:
+    roles_to_add.append(pracownik_role)
+
+  try:
+    await pracownik.add_roles(*roles_to_add)
+  except discord.Forbidden:
+    return await interaction.response.send_message(
+        "⚠️ Bot nie posiada uprawnień do nadania ról temu użytkownikowi!",
+        ephemeral=True,
+    )
+
+  embed = discord.Embed(
+      title="✦ PIENIĄŻEK AUTO | ZATRUDNIENIE W KADRZE",
+      description=f"Pracownik {pracownik.mention} został oficjalnie zatrudniony!",
+      color=discord.Color.gold(),
+      timestamp=datetime.now(),
+  )
+  embed.set_thumbnail(url=pracownik.display_avatar.url)
+  embed.add_field(
+      name="👤 Nowy Pracownik",
+      value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
+      inline=True,
+  )
+  embed.add_field(
+      name="👑 Zatrudniający", value=f"{interaction.user.mention}", inline=True
+  )
+  embed.add_field(
+      name="🚀 Przyznana Ranga", value=f"**{swiezak_role.name}**", inline=False
+  )
+  embed.set_footer(
+      text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+      icon_url=(
+          interaction.guild.icon.url if interaction.guild.icon else None
+      ),
+  )
+
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+  if log_channel:
+    await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+
+  await interaction.response.send_message(
+      f"✅ Pomyślnie zatrudniono pracownika {pracownik.mention} (nadano rangę"
+      f" **{swiezak_role.name}**)!",
+      ephemeral=True,
   )
 
 
