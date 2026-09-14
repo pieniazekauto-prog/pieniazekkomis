@@ -33,7 +33,7 @@ GUILD_ID = 1503007115956977706  # ID Twojego serwera
 ZARZAD_ROLE_ID = 1503151943688654958  # ID Roli Zarządu
 PRACOWNIK_ROLE_ID = 1503009723543191782  # ID Roli Pracownika
 
-# ID RÓL DLA SYSTEMU HR (AWANS / DEGRAD / ZWOLNIENIE)
+# ID RÓL DLA SYSTEMU HR (OD NAJNIŻSZEJ DO NAJWYŻSZEJ)
 GRADE1_ROLE_ID = 1547341972484661318  # Świeżak
 GRADE2_ROLE_ID = 1547342288231862303  # Handlarz
 GRADE3_ROLE_ID = 1548089007416545302  # Doświadczony
@@ -62,11 +62,7 @@ GRADE_NAMES = {
     GRADE8_ROLE_ID: "Co Owner",
 }
 
-# KONFIGURACJA WERYFIKACJI I KANAŁÓW POWITALNYCH
-VERIFY_ROLE_ID = 1503009366985408553
 WELCOME_CHANNEL_ID = 1503013291197202432
-
-# URL grafiki powitalnej (komisowy baner)
 WELCOME_IMAGE_URL = "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_7.png"
 
 
@@ -84,6 +80,14 @@ def is_pracownik(user: discord.Member) -> bool:
   return any(
       role.id == PRACOWNIK_ROLE_ID for role in user.roles
   ) or is_zarzad(user)
+
+
+def get_current_grade_index(member: discord.Member) -> int:
+  highest_index = -1
+  for i, g_id in enumerate(GRADES):
+    if any(r.id == g_id for r in member.roles):
+      highest_index = i
+  return highest_index
 
 
 # ==============================================================================
@@ -107,9 +111,7 @@ class UstawDaneModal(Modal, title="Ustaw dane IC"):
       )
     except discord.Forbidden:
       await interaction.response.send_message(
-          "❌ Bot nie ma uprawnień do zmiany Twojego pseudonimu (Twoja rola"
-          " jest wyżej niż rola bota w ustawieniach ról).",
-          ephemeral=True,
+          "❌ Bot nie ma uprawnień do zmiany Twojego pseudonimu.", ephemeral=True
       )
 
 
@@ -220,14 +222,7 @@ class MandatReasonSelect(Select):
         value="**24 godziny** od momentu wystawienia.",
         inline=False,
     )
-    embed.set_footer(
-        text="System Mandatów BCD • Pieniążek Auto",
-        icon_url=(
-            interaction.client.user.display_avatar.url
-            if interaction.client.user
-            else None
-        ),
-    )
+    embed.set_footer(text="System Mandatów BCD • Pieniążek Auto")
 
     await interaction.response.edit_message(
         content="✅ Mandat został pomyślnie wystawiony na kanale!", view=None
@@ -245,7 +240,7 @@ class MandatView(View):
 
 
 # ==============================================================================
-# SYSTEM ZARZĄDZANIA KADRAMI (KOMENDA /ZARZĄDZAJ - AWANS / DEGRAD / ZWOLNIENIE)
+# AUTOMATYCZNY SYSTEM ZARZĄDZANIA KADRAMI (/ZARZĄDZAJ)
 # ==============================================================================
 class ZarzadzajSelect(Select):
 
@@ -255,19 +250,19 @@ class ZarzadzajSelect(Select):
         discord.SelectOption(
             label="📈 Awans",
             value="awans",
-            description="Awansuj pracownika na wyższe stanowisko",
+            description="Automatycznie awansuj pracownika o 1 rangę wyżej",
             emoji="🟢",
         ),
         discord.SelectOption(
             label="📉 Degrad",
             value="degrad",
-            description="Degraduj pracownika na niższe stanowisko",
+            description="Automatycznie degraduj pracownika o 1 rangę niżej",
             emoji="🟠",
         ),
         discord.SelectOption(
             label="❌ Zwolnienie",
             value="zwolnienie",
-            description="Usuń pracownika z komisu (odeberz rangi)",
+            description="Natychmiastowo zwolnij pracownika (odeberz rangi)",
             emoji="🔴",
         ),
     ]
@@ -281,17 +276,17 @@ class ZarzadzajSelect(Select):
   async def callback(self, interaction: Interaction):
     akcja = self.values[0]
     guild = interaction.guild
+    current_index = get_current_grade_index(self.target_member)
 
     if akcja == "zwolnienie":
-      roles_to_remove = [r for r in self.target_member.roles.values() if r.id in GRADES] # type: ignore
+      roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
       try:
         if roles_to_remove:
           await self.target_member.remove_roles(*roles_to_remove)
         await interaction.response.edit_message(
             content=(
                 f"❌ Pracownik {self.target_member.mention} został zwolniony i"
-                " odebrano mu rangi pracownicze przez"
-                f" {interaction.user.mention}."
+                " odebrano mu rangi pracownicze."
             ),
             view=None,
         )
@@ -302,72 +297,68 @@ class ZarzadzajSelect(Select):
         )
       return
 
-    view = GradeSelectView(self.target_member, akcja)
-    await interaction.response.edit_message(
-        content=(
-            f"Wybierz docelową rangę dla {self.target_member.mention} w"
-            f" ramach operacji **{akcja.upper()}**:"
-        ),
-        view=view,
-    )
-
-
-class GradeSelect(Select):
-
-  def __init__(self, target_member: discord.Member, akcja: str):
-    self.target_member = target_member
-    self.akcja = akcja
-
-    options = []
-    for g_id in GRADES:
-      g_name = GRADE_NAMES.get(g_id, f"Ranga {g_id}")
-      options.append(
-          discord.SelectOption(
-              label=g_name, value=str(g_id), description=f"Ranga ID: {g_id}"
-          )
-      )
-
-    super().__init__(
-        placeholder="Wybierz nową rangę stanowiska...",
-        min_values=1,
-        max_values=1,
-        options=options,
-    )
-
-  async def callback(self, interaction: Interaction):
-    new_role_id = int(self.values[0])
-    guild = interaction.guild
-    new_role = guild.get_role(new_role_id)
-
-    if not new_role:
+    if current_index == -1:
       await interaction.response.edit_message(
-          content="❌ Nie znaleziono wybranej rangi na serwerze!", view=None
+          content=(
+              f"❌ Użytkownik {self.target_member.mention} nie posiada żadnej"
+              " oficjalnej rangi pracowniczej!"
+          ),
+          view=None,
       )
       return
 
-    roles_to_remove = [r for r in self.target_member.roles if r.id in GRADES]
+    if akcja == "awans":
+      if current_index + 1 >= len(GRADES):
+        await interaction.response.edit_message(
+            content=(
+                f"⚠️ Pracownik {self.target_member.mention} posiada już"
+                " **najwyższą** możliwą rangę!"
+            ),
+            view=None,
+        )
+        return
+      new_role_id = GRADES[current_index + 1]
+    else:
+      if current_index - 1 < 0:
+        await interaction.response.edit_message(
+            content=(
+                f"⚠️ Pracownik {self.target_member.mention} posiada już"
+                " **najniższą** możliwą rangę!"
+            ),
+            view=None,
+        )
+        return
+      new_role_id = GRADES[current_index - 1]
+
+    new_role = guild.get_role(new_role_id)
+    if not new_role:
+      await interaction.response.edit_message(
+          content="❌ Nie znaleziono docelowej rangi na serwerze!", view=None
+      )
+      return
+
+    old_roles_to_remove = [
+        r for r in self.target_member.roles if r.id in GRADES
+    ]
 
     try:
-      if roles_to_remove:
-        await self.target_member.remove_roles(*roles_to_remove)
+      if old_roles_to_remove:
+        await self.target_member.remove_roles(*old_roles_to_remove)
       await self.target_member.add_roles(new_role)
 
-      akcja_pl = (
-          "Awansowano" if self.akcja == "awans" else "Dokonano degradacji"
+      komunikat_akcji = (
+          "Awansowano" if akcja == "awans" else "Zdegradowano"
       )
       await interaction.response.edit_message(
           content=(
-              f"✅ {akcja_pl} pracownika {self.target_member.mention} na rangę"
-              f" **{new_role.name}** przez {interaction.user.mention}."
+              f"✅ {komunikat_akcji} pracownika {self.target_member.mention} na"
+              f" nowe stanowisko: **{new_role.name}**."
           ),
           view=None,
       )
     except discord.Forbidden:
       await interaction.response.edit_message(
-          content=(
-              "⚠️ Bot nie ma uprawnień do zarządzania rolami tego"
-              " użytkownika!"
-          ),
+          content="⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!",
           view=None,
       )
 
@@ -379,55 +370,25 @@ class ZarzadzajView(View):
     self.add_item(ZarzadzajSelect(target_member))
 
 
-class GradeSelectView(View):
-
-  def __init__(self, target_member: discord.Member, akcja: str):
-    super().__init__(timeout=60)
-    self.add_item(GradeSelect(target_member, akcja))
-
-
 # ==============================================================================
 # SYSTEM WYPOWIEDZEŃ
 # ==============================================================================
 class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
   stanowisko = TextInput(
-      label="Obecne Stanowisko",
-      placeholder="np. Starszy Sprzedawca / Mechanik",
-      required=True,
-      max_length=50,
+      label="Obecne Stanowisko", placeholder="np. Handlarz", required=True
   )
   powod = TextInput(
       label="Powód Wypowiedzenia",
       style=discord.TextStyle.paragraph,
-      placeholder="Opisz szczegółowo powód rezygnacji...",
       required=True,
-      min_length=10,
   )
 
   async def on_submit(self, interaction: Interaction):
     embed = discord.Embed(
-        title="✨ NOWE WYPOWIEDZENIE",
-        description=(
-            "Wpłynął nowy wniosek o rozwiązanie umowy. Oczekuje na weryfikację"
-            " przez Zarząd."
-        ),
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
+        title="✨ NOWE WYPOWIEDZENIE", color=discord.Color.gold()
     )
-    embed.set_author(
-        name=interaction.guild.name,
-        icon_url=(
-            interaction.guild.icon.url if interaction.guild.icon else None
-        ),
-    )
-    embed.add_field(
-        name="👤 Pracownik",
-        value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="💼 Stanowisko", value=f"{self.stanowisko.value}", inline=True
-    )
+    embed.add_field(name="👤 Pracownik", value=f"{interaction.user.mention}")
+    embed.add_field(name="💼 Stanowisko", value=f"{self.stanowisko.value}")
     embed.add_field(
         name="📝 Powód", value=f"```\n{self.powod.value}\n```", inline=False
     )
@@ -436,16 +397,6 @@ class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
         value="⏳ **Oczekuje na rozpatrzenie**",
         inline=False,
     )
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
-    embed.set_footer(
-        text="System Wypowiedzi • Pieniążek Auto",
-        icon_url=(
-            interaction.client.user.display_avatar.url
-            if interaction.client.user
-            else None
-        ),
-    )
-
     view = DecyzjaZarzaduView(target_member=interaction.user)
     await interaction.response.send_message(embed=embed, view=view)
 
@@ -459,16 +410,11 @@ class DecyzjaZarzaduView(View):
   @button(
       label="Zaakceptuj", style=ButtonStyle.success, custom_id="wyp_accept"
   )
-  async def zaakceptuj(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
+  async def zaakceptuj(self, interaction: Interaction, button: Button):
     if not is_zarzad(interaction.user):
-      await interaction.response.send_message(
-          "❌ Nie posiadasz uprawnień Zarządu do podjęcia tej decyzji!",
-          ephemeral=True,
+      return await interaction.response.send_message(
+          "❌ Brak uprawnień!", ephemeral=True
       )
-      return
-
     roles_to_remove = [
         r
         for r in self.target_member.roles
@@ -476,36 +422,26 @@ class DecyzjaZarzaduView(View):
     ]
     try:
       await self.target_member.remove_roles(*roles_to_remove)
-      status_desc = (
-          f"✅ **Zatwierdzono przez {interaction.user.mention}**\n*Rangi"
-          " pracownika zostały pomyślnie usunięte.*"
-      )
-    except discord.Forbidden:
-      status_desc = (
-          f"⚠️ **Zatwierdzono przez {interaction.user.mention}**\n*Bot nie ma"
-          " uprawnień do odebrania ról!*"
-      )
-
+    except:
+      pass
     embed = interaction.message.embeds[0]
     embed.set_field_at(
-        3, name="📊 Status Decyzji", value=status_desc, inline=False
+        3,
+        name="📊 Status Decyzji",
+        value=f"✅ **Zatwierdzono przez {interaction.user.mention}**",
+        inline=False,
     )
     embed.color = discord.Color.green()
-
     for child in self.children:
       child.disabled = True
-
     await interaction.response.edit_message(embed=embed, view=self)
 
   @button(label="Odrzuć", style=ButtonStyle.danger, custom_id="wyp_reject")
-  async def odrzuc(self, interaction: Interaction, button: discord.ui.Button):
+  async def odrzuc(self, interaction: Interaction, button: Button):
     if not is_zarzad(interaction.user):
-      await interaction.response.send_message(
-          "❌ Nie posiadasz uprawnień Zarządu do podjęcia tej decyzji!",
-          ephemeral=True,
+      return await interaction.response.send_message(
+          "❌ Brak uprawnień!", ephemeral=True
       )
-      return
-
     embed = interaction.message.embeds[0]
     embed.set_field_at(
         3,
@@ -514,15 +450,13 @@ class DecyzjaZarzaduView(View):
         inline=False,
     )
     embed.color = discord.Color.red()
-
     for child in self.children:
       child.disabled = True
-
     await interaction.response.edit_message(embed=embed, view=self)
 
 
 # ==============================================================================
-# GŁÓWNY WIDOK POWITALNY I TICKETÓW
+# GŁÓWNY WIDOK POWITALNY I TICKETÓW (PRZYWRÓCONE DWA PRZYCISKI!)
 # ==============================================================================
 class WelcomeTicketView(View):
 
@@ -530,14 +464,32 @@ class WelcomeTicketView(View):
     super().__init__(timeout=None)
 
   @button(
-      label="Skontaktuj się z Zarządem",
+      label="Ustaw dane",
+      style=ButtonStyle.blurple,
+      custom_id="set_data_btn",
+      emoji="✏️",
+  )
+  async def set_data(self, interaction: Interaction, button: Button):
+    await interaction.response.send_modal(UstawDaneModal())
+
+  @button(
+      label="Podanie o pracę",
+      style=ButtonStyle.blurple,
+      custom_id="ticket_podanie_btn",
+      emoji="📄",
+  )
+  async def ticket_podanie(self, interaction: Interaction, button: Button):
+    await self.create_ticket(
+        interaction, "podanie", "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮", "Podanie o Pracę"
+    )
+
+  @button(
+      label="Pomoc / Zarząd",
       style=ButtonStyle.blurple,
       custom_id="ticket_help_btn",
-      emoji="👑",
+      emoji="🛠️",
   )
-  async def ticket_help(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
+  async def ticket_help(self, interaction: Interaction, button: Button):
     await self.create_ticket(
         interaction, "pomoc", "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮", "Pomoc / Support OOC"
     )
@@ -570,9 +522,7 @@ class WelcomeTicketView(View):
     embed = discord.Embed(
         title=f"Ticket: {topic_desc}",
         description=(
-            f"Witaj {interaction.user.mention}!\nOpisz szczegółowo swoją sprawę"
-            " lub zawrzyj informacje dotyczące podania. Zarząd wkrótce się z"
-            " Tobą skontaktuje."
+            f"Witaj {interaction.user.mention}!\nOpisz szczegółowo swoją sprawę."
         ),
         color=discord.Color.gold(),
     )
@@ -591,39 +541,26 @@ class TicketCloseConfirmView(View):
     super().__init__(timeout=60)
 
   @button(
-      label="Potwierdź zamknięcie",
-      style=ButtonStyle.red,
-      custom_id="confirm_close_ticket",
-      emoji="✅",
+      label="Potwierdź zamknięcie", style=ButtonStyle.red, custom_id="conf_close"
   )
-  async def confirm_close(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
+  async def confirm_close(self, interaction: Interaction, button: Button):
     if not is_zarzad(interaction.user):
-      await interaction.response.send_message(
-          "❌ Tylko Zarząd może ostatecznie potwierdzić i usunąć ten ticket!",
-          ephemeral=True,
+      return await interaction.response.send_message(
+          "❌ Tylko Zarząd może usunąć ten ticket!", ephemeral=True
       )
-      return
-
     await interaction.response.send_message(
-        "🔒 Ticket został ostatecznie zamknięty przez Zarząd. Usuwanie kanału"
-        " za 3 sekundy..."
+        "🔒 Usuwanie kanału za 3 sekundy..."
     )
     import asyncio
 
     await asyncio.sleep(3)
     await interaction.channel.delete()
 
-  @button(
-      label="Anuluj", style=ButtonStyle.secondary, custom_id="cancel_close_ticket"
-  )
-  async def cancel_close(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
+  @button(label="Anuluj", style=ButtonStyle.secondary, custom_id="canc_close")
+  async def cancel_close(self, interaction: Interaction, button: Button):
     await interaction.message.delete()
     await interaction.response.send_message(
-        "✅ Anulowano zamknięcie ticketu.", ephemeral=True
+        "✅ Anulowano.", ephemeral=True
     )
 
 
@@ -633,19 +570,12 @@ class TicketCloseView(View):
     super().__init__(timeout=None)
 
   @button(
-      label="Zamknij ticket",
-      style=ButtonStyle.red,
-      custom_id="close_ticket",
-      emoji="🔒",
+      label="Zamknij ticket", style=ButtonStyle.red, custom_id="close_tckt"
   )
-  async def close_ticket(
-      self, interaction: Interaction, button: discord.ui.Button
-  ):
-    view = TicketCloseConfirmView()
+  async def close_ticket(self, interaction: Interaction, button: Button):
     await interaction.response.send_message(
-        f"⚠️ {interaction.user.mention}, czy na pewno chcesz zamknąć ten"
-        " ticket?\n*Ostateczne usunięcie kanału wymaga rangi **Zarząd**.*",
-        view=view,
+        "⚠️ Czy na pewno chcesz zamknąć ten ticket?",
+        view=TicketCloseConfirmView(),
         ephemeral=True,
     )
 
@@ -671,72 +601,52 @@ class MyClient(discord.Client):
 client = MyClient()
 
 
-# ==============================================================================
-# ZDARZENIA BOTA (EVENTS)
-# ==============================================================================
 @client.event
 async def on_ready():
   print(f"✅ Bot działa! Zalogowano jako: {client.user}")
 
 
 # ==============================================================================
-# KOMENDY SLASH Z UPRAWNIENIAMI
+# KOMENDY SLASH
 # ==============================================================================
-@client.tree.command(
-    name="setup_panel",
-    description="Wysłanie panelu strefy zarządu z przyciskiem na ten kanał",
-)
+@client.tree.command(name="setup_panel", description="Wysyła panel z przyciskami")
 async def setup_panel(interaction: Interaction):
   if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
     )
-    return
 
   embed = discord.Embed(
       title="👑 ⟡ STREFA ZARZĄDU • POMOC I WSPARCIE",
       description=(
-          "Masz ważne pytania, sprawę do omówienia, potrzebujesz profesjonalnego"
-          " wsparcia lub chcesz skontaktować się bezpośrednio z Zarządem"
-          " Pieniążek Auto?\n\nKliknij przycisk poniżej, aby utworzyć prywatny"
-          " kanał zgłoszenia, na którym nasz zespół udzieli Ci pomocy."
+          "Wybierz odpowiedni przycisk poniżej, aby ustawić swoje dane IC,"
+          " złożyć podanie lub skontaktować się z Zarządem."
       ),
       color=discord.Color.gold(),
   )
-  embed.set_footer(text="Support • Pieniążek Auto")
-
   await interaction.channel.send(embed=embed, view=WelcomeTicketView())
-  await interaction.response.send_message(
-      "✅ Panel strefy zarządu został wysłany!", ephemeral=True
-  )
+  await interaction.response.send_message("✅ Wysłano panel!", ephemeral=True)
 
 
-@client.tree.command(
-    name="testjoin",
-    description="Testuje powitanie dla wybranego użytkownika (Tylko dla Zarządu)",
-)
+@client.tree.command(name="testjoin", description="Testuje powitanie")
 async def testjoin(interaction: Interaction, member: discord.Member):
   if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
     )
-    return
 
   channel = interaction.guild.get_channel(WELCOME_CHANNEL_ID)
   if not channel:
-    await interaction.response.send_message(
-        "❌ Nie znaleziono kanału powitalnego!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Brak kanału powitalnego!", ephemeral=True
     )
-    return
 
   embed = discord.Embed(
       title="✦ PIENIĄŻEK AUTO OSLORP | OFICJALNA BRAMA",
       description=(
-          f"Siema {member.mention}! 🥂\n\n"
-          "> Właśnie przekroczyłeś próg\n"
-          "> najchętniej wybieranego komisu w\n"
-          "> mieście.\n\n"
-          "Ustaw swoje dane IC i baw się dobrze!"
+          f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg\n>"
+          " najchętniej wybieranego komisu w\n> mieście.\n\nUstaw swoje dane"
+          " IC i baw się dobrze!"
       ),
       color=discord.Color.gold(),
   )
@@ -746,96 +656,72 @@ async def testjoin(interaction: Interaction, member: discord.Member):
 
   await channel.send(embed=embed, view=WelcomeTicketView())
   await interaction.response.send_message(
-      f"✅ Wysłano testowe powitanie dla {member.mention}!", ephemeral=True
+      f"✅ Wysłano powitanie dla {member.mention}!", ephemeral=True
   )
 
 
-@client.tree.command(
-    name="zarzadzaj",
-    description="Zarządzaj rangami pracownika (awans/degrad/zwolnienie)",
-)
+@client.tree.command(name="zarzadzaj", description="Zarządzaj rangami pracownika")
 async def zarzadzaj(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
     )
-    return
-
-  view = ZarzadzajView(target_member=pracownik)
   await interaction.response.send_message(
-      f"⚙️ Wybierz akcję dla pracownika {pracownik.mention}:",
-      view=view,
+      f"⚙️ Wybierz akcję dla {pracownik.mention}:",
+      view=ZarzadzajView(pracownik),
       ephemeral=True,
   )
 
 
-@client.tree.command(
-    name="wypowiedzenie", description="Złóż oficjalne wypowiedzenie ze stanowiska"
-)
+@client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie")
 async def wypowiedzenie(interaction: Interaction):
   if not is_pracownik(interaction.user):
-    await interaction.response.send_message(
-        "❌ Dostępne tylko dla pracowników!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Tylko dla pracowników!", ephemeral=True
     )
-    return
   await interaction.response.send_modal(WypowiedzenieModal())
 
 
-@client.tree.command(
-    name="raport", description="Zgłoś raport ze sprzedaży pojazdu"
-)
+@client.tree.command(name="raport", description="Raport ze sprzedaży")
 async def raport(
     interaction: Interaction, kwota: str, dowod: discord.Attachment
 ):
   if not is_pracownik(interaction.user):
-    await interaction.response.send_message(
-        "❌ Dostępne tylko dla pracowników!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Tylko dla pracowników!", ephemeral=True
     )
-    return
-
-  ping_zarzad = f"<@&{ZARZAD_ROLE_ID}>"
   embed = discord.Embed(
       title="📝 RAPORT ZE SPRZEDAŻY",
       color=discord.Color.gold(),
       timestamp=datetime.now(),
   )
-  embed.add_field(
-      name="👤 Kto:", value=f"{interaction.user.mention}", inline=False
-  )
-  embed.add_field(name="💰 Za ile sprzedano:", value=f"`{kwota}`", inline=False)
+  embed.add_field(name="👤 Kto:", value=f"{interaction.user.mention}")
+  embed.add_field(name="💰 Za ile:", value=f"`{kwota}`")
   if dowod.content_type and "image" in dowod.content_type:
     embed.set_image(url=dowod.url)
-
   await interaction.response.send_message(
-      content=ping_zarzad,
+      content=f"<@&{ZARZAD_ROLE_ID}>",
       embed=embed,
       allowed_mentions=discord.AllowedMentions(roles=True),
   )
 
 
-@client.tree.command(
-    name="mandat", description="Wystaw mandat pracownikowi (Tylko dla Zarządu)"
-)
+@client.tree.command(name="mandat", description="Wystaw mandat")
 async def mandat(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    await interaction.response.send_message(
-        "❌ Brak uprawnień Zarządu!", ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
     )
-    return
-  view = MandatView(ukarany=pracownik, wystawiajacy=interaction.user)
   await interaction.response.send_message(
-      f"⚙️ Wybierz powód mandatu dla pracownika {pracownik.mention}:",
-      view=view,
+      f"⚙️ Wybierz mandat dla {pracownik.mention}:",
+      view=MandatView(pracownik, interaction.user),
       ephemeral=True,
   )
 
 
-# ==============================================================================
-# URUCHOMIENIE BOTA
-# ==============================================================================
 if __name__ == "__main__":
   if TOKEN is None:
-    print("❌ BŁĄD: Brak zmiennej DISCORD_TOKEN!")
+    print("❌ BŁĄD: Brak DISCORD_TOKEN!")
   else:
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
