@@ -325,14 +325,14 @@ class SetupPanelView(View):
 
 
 # ==============================================================================
-# CAŁKOWICIE PRZEPISANY SYSTEM LISTY PRACOWNIKÓW
+# POPRAWIONy SYSTEM LISTY PRACOWNIKÓW (BEZ BŁĘDÓW PRZESUNIĘĆ)
 # ==============================================================================
 async def update_employee_list(guild: discord.Guild):
     channel = guild.get_channel(EMPLOYEE_LIST_CHANNEL_ID)
     if not channel:
         return
 
-    # Lista nagłówków oraz przypisanych ID ról (dokładnie w kolejności od najwyższej do najniższej)
+    # Dokładna hierarchia od NAJWYŻSZEJ do NAJNIŻSZEJ rangi
     roles_config = [
         ("⟡ @👑 ⟡ Owner⟡", GRADE8_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", GRADE7_ROLE_ID),
@@ -345,26 +345,36 @@ async def update_employee_list(guild: discord.Guild):
         ("⟡ @🛡️ ⟡ Ochrona  ⟡", OCHRONA_ROLE_ID),
     ]
 
-    # Słownik do przechowywania listy członków dla każdej sekcji
     sections = {header: [] for header, _ in roles_config}
     assigned_user_ids = set()
     total_employees = set()
 
-    # Iterujemy po strukturze od góry do dołu, przypisując każdego użytkownika TYLKO RAZ (do najwyższej roli)
-    for header, role_id in roles_config:
-        role = guild.get_role(role_id)
-        if role:
-            # Sortujemy członków alfabetycznie według nicku/nazwy wyświetlanej dla porządku
-            sorted_members = sorted(
-                role.members, key=lambda m: m.display_name.lower()
-            )
-            for member in sorted_members:
-                if member.id not in assigned_user_ids:
-                    assigned_user_ids.add(member.id)
-                    sections[header].append(member)
-                    total_employees.add(member.id)
+    # Sprawdzamy każdego członka serwera pod kątem ról
+    for member in guild.members:
+        if member.bot:
+            continue
 
-    # Budowanie czystego i czytelnego tekstu embedu
+        assigned_role_header = None
+        # Przechodzimy po konfiguracji OD GÓRY DO DOŁU.
+        # Pierwsza rola z góry, którą użytkownik posiada, jest jego najwyższym stanowiskiem!
+        for header, role_id in roles_config:
+            role = guild.get_role(role_id)
+            if role and role in member.roles:
+                assigned_role_header = header
+                break  # Przerywamy pętlę, bo znalezliśmy najwyższą rangę dla tego usera
+
+        if assigned_role_header and member.id not in assigned_user_ids:
+            assigned_user_ids.add(member.id)
+            sections[assigned_role_header].append(member)
+            total_employees.add(member.id)
+
+    # Sortujemy członków w każdej sekcji alfabetycznie
+    for header in sections:
+        sections[header] = sorted(
+            sections[header], key=lambda m: m.display_name.lower()
+        )
+
+    # Składanie czystego embedu
     desc_lines = []
     for header, _ in roles_config:
         desc_lines.append(f"> # {header}")
@@ -374,7 +384,7 @@ async def update_employee_list(guild: discord.Guild):
                 desc_lines.append(f"- {m.display_name} | {m.mention}")
         else:
             desc_lines.append("-")
-        desc_lines.append("")  # Pusta linia odstępu dla czytelności
+        desc_lines.append("")
 
     desc_lines.append(f"## Liczba pracowników: `{len(total_employees)}`")
 
@@ -386,7 +396,6 @@ async def update_employee_list(guild: discord.Guild):
     )
     embed.set_footer(text="© Pieniążek Auto OSLORP | Automatyczna lista kadry")
 
-    # Wyszukujemy istniejącą wiadomość bota na kanale lub wysyłamy nową
     async for message in channel.history(limit=10):
         if message.author == guild.me:
             await message.edit(embed=embed, view=EmployeePanelView())
