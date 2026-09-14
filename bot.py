@@ -548,22 +548,34 @@ async def testjoin(interaction: Interaction, member: discord.Member):
   )
 
 
-@client.tree.command(name="awans", description="Awansuj pracownika i wyślij profesjonalny embed")
+@client.tree.command(
+    name="awans", description="Awansuj pracownika i wyślij profesjonalny embed"
+)
 @app_commands.describe(pracownik="Pracownik, którego chcesz awansować")
 async def awans(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
+    )
 
   current_index = get_current_grade_index(pracownik)
   if current_index == -1:
-    return await interaction.response.send_message(f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!", ephemeral=True)
-  
+    return await interaction.response.send_message(
+        f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi"
+        " pracowniczej!",
+        ephemeral=True,
+    )
+
   if current_index + 1 >= len(GRADES):
-    return await interaction.response.send_message(f"⚠️ Pracownik {pracownik.mention} posiada już **najwyższą** możliwą rangę!", ephemeral=True)
+    return await interaction.response.send_message(
+        f"⚠️ Pracownik {pracownik.mention} posiada już **najwyższą** możliwą"
+        " rangę!",
+        ephemeral=True,
+    )
 
   old_role_id = GRADES[current_index]
   new_role_id = GRADES[current_index + 1]
-  
+
   old_role = interaction.guild.get_role(old_role_id)
   new_role = interaction.guild.get_role(new_role_id)
 
@@ -572,42 +584,81 @@ async def awans(interaction: Interaction, pracownik: discord.Member):
       await pracownik.remove_roles(old_role)
     await pracownik.add_roles(new_role)
   except discord.Forbidden:
-    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True)
+    return await interaction.response.send_message(
+        "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True
+    )
 
   embed = discord.Embed(
       title="🟢 OFICJALNY AWANS PRACOWNIKA",
-      description=f"Gratulacje dla pracownika {pracownik.mention} za świetną pracę i zaangażowanie!",
+      description=(
+          f"Gratulacje dla pracownika {pracownik.mention} za świetną pracę i"
+          " zaangażowanie!"
+      ),
       color=discord.Color.green(),
-      timestamp=datetime.now()
+      timestamp=datetime.now(),
   )
   embed.set_thumbnail(url=pracownik.display_avatar.url)
-  embed.add_field(name="👤 Awansowany", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
-  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
-  embed.add_field(name="📈 Poprzednia Ranga", value=f"`{old_role.name if old_role else 'Brak'}`", inline=False)
-  embed.add_field(name="🚀 Nowa Ranga", value=f"**{new_role.name}**", inline=False)
-  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+  embed.add_field(
+      name="👤 Awansowany",
+      value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
+      inline=True,
+  )
+  embed.add_field(
+      name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True
+  )
+  embed.add_field(
+      name="📈 Poprzednia Ranga",
+      value=f"`{old_role.name if old_role else 'Brak'}`",
+      inline=False,
+  )
+  embed.add_field(
+      name="🚀 Nowa Ranga", value=f"**{new_role.name}**", inline=False
+  )
+  embed.set_footer(
+      text="Pieniążek Auto OSLORP • System Kadr",
+      icon_url=(
+          interaction.guild.icon.url if interaction.guild.icon else None
+      ),
+  )
 
-  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
-  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
-  await interaction.response.send_message(f"✅ Pomyślnie awansowano pracownika {pracownik.mention} na stanowisko **{new_role.name}**!", ephemeral=True)
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+  if log_channel:
+    await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(
+      f"✅ Pomyślnie awansowano pracownika {pracownik.mention} na stanowisko"
+      f" **{new_role.name}**!",
+      ephemeral=True,
+  )
 
 
-@client.tree.command(name="degrad", description="Zdegraduj pracownika i wyślij profesjonalny embed")
+@client.tree.command(
+    name="degrad", description="Zdegraduj pracownika i wyślij profesjonalny embed"
+)
 @app_commands.describe(pracownik="Pracownik, którego chcesz zdegradować")
 async def degrad(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
+    )
 
   current_index = get_current_grade_index(pracownik)
   if current_index == -1:
-    return await interaction.response.send_message(f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi pracowniczej!", ephemeral=True)
-  
+    return await interaction.response.send_message(
+        f"❌ Użytkownik {pracownik.mention} nie posiada żadnej oficjalnej rangi"
+        " pracowniczej!",
+        ephemeral=True,
+    )
+
   if current_index - 1 < 0:
-    return await interaction.response.send_message(f"⚠️ Pracownik {pracownik.mention} posiada już **najniższą** możliwą rangę!", ephemeral=True)
+    return await interaction.response.send_message(
+        f"⚠️ Pracownik {pracownik.mention} posiada już **najniższą** możliwą"
+        " rangę!",
+        ephemeral=True,
+    )
 
   old_role_id = GRADES[current_index]
   new_role_id = GRADES[current_index - 1]
-  
+
   old_role = interaction.guild.get_role(old_role_id)
   new_role = interaction.guild.get_role(new_role_id)
 
@@ -616,55 +667,112 @@ async def degrad(interaction: Interaction, pracownik: discord.Member):
       await pracownik.remove_roles(old_role)
     await pracownik.add_roles(new_role)
   except discord.Forbidden:
-    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True)
+    return await interaction.response.send_message(
+        "⚠️ Bot nie ma uprawnień do zmiany ról tego użytkownika!", ephemeral=True
+    )
 
   embed = discord.Embed(
       title="🟠 OFICJALNA DEGRADACJA PRACOWNIKA",
-      description=f"Pracownik {pracownik.mention} został zdegradowany z powodu decyzji zarządu.",
+      description=(
+          f"Pracownik {pracownik.mention} został zdegradowany z powodu decyzji"
+          " zarządu."
+      ),
       color=discord.Color.orange(),
-      timestamp=datetime.now()
+      timestamp=datetime.now(),
   )
   embed.set_thumbnail(url=pracownik.display_avatar.url)
-  embed.add_field(name="👤 Zdegradowany", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
-  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
-  embed.add_field(name="📉 Poprzednia Ranga", value=f"`{old_role.name if old_role else 'Brak'}`", inline=False)
-  embed.add_field(name="📉 Nowa Ranga", value=f"**{new_role.name}**", inline=False)
-  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+  embed.add_field(
+      name="👤 Zdegradowany",
+      value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
+      inline=True,
+  )
+  embed.add_field(
+      name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True
+  )
+  embed.add_field(
+      name="📉 Poprzednia Ranga",
+      value=f"`{old_role.name if old_role else 'Brak'}`",
+      inline=False,
+  )
+  embed.add_field(
+      name="📉 Nowa Ranga", value=f"**{new_role.name}**", inline=False
+  )
+  embed.set_footer(
+      text="Pieniążek Auto OSLORP • System Kadr",
+      icon_url=(
+          interaction.guild.icon.url if interaction.guild.icon else None
+      ),
+  )
 
-  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
-  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
-  await interaction.response.send_message(f"✅ Pomyślnie zdegradowano pracownika {pracownik.mention} na stanowisko **{new_role.name}**!", ephemeral=True)
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+  if log_channel:
+    await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(
+      f"✅ Pomyślnie zdegradowano pracownika {pracownik.mention} na stanowisko"
+      f" **{new_role.name}**!",
+      ephemeral=True,
+  )
 
 
-@client.tree.command(name="zwolnienie", description="Zwolnij pracownika i wyślij profesjonalny embed")
+@client.tree.command(
+    name="zwolnienie", description="Zwolnij pracownika i wyślij profesjonalny embed"
+)
 @app_commands.describe(pracownik="Pracownik, którego chcesz zwolnić")
 async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
   if not is_zarzad(interaction.user):
-    return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    return await interaction.response.send_message(
+        "❌ Brak uprawnień!", ephemeral=True
+    )
 
-  roles_to_remove = [r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID]
-  
+  roles_to_remove = [
+      r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+  ]
+
   try:
     if roles_to_remove:
       await pracownik.remove_roles(*roles_to_remove)
   except discord.Forbidden:
-    return await interaction.response.send_message("⚠️ Bot nie ma uprawnień do odebrania ról temu użytkownikowi!", ephemeral=True)
+    return await interaction.response.send_message(
+        "⚠️ Bot nie ma uprawnień do odebrania ról temu użytkownikowi!",
+        ephemeral=True,
+    )
 
   embed = discord.Embed(
       title="🔴 ZWOLNIENIE Z PRACOWNICZYCH SZEREGÓW",
-      description=f"Pracownik {pracownik.mention} został zwolniony z komisu **Pieniążek Auto**.",
+      description=(
+          f"Pracownik {pracownik.mention} został zwolniony z komisu"
+          " **Pieniążek Auto**."
+      ),
       color=discord.Color.red(),
-      timestamp=datetime.now()
+      timestamp=datetime.now(),
   )
   embed.set_thumbnail(url=pracownik.display_avatar.url)
-  embed.add_field(name="👤 Zwolniony", value=f"{pracownik.mention}\n`ID: {pracownik.id}`", inline=True)
-  embed.add_field(name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True)
-  embed.add_field(name="📊 Status", value="**Zwolniony / Odrzucony z kadry**", inline=False)
-  embed.set_footer(text="Pieniążek Auto OSLORP • System Kadr", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+  embed.add_field(
+      name="👤 Zwolniony",
+      value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
+      inline=True,
+  )
+  embed.add_field(
+      name="👑 Decyzja Zarządu", value=f"{interaction.user.mention}", inline=True
+  )
+  embed.add_field(
+      name="📊 Status", value="**Zwolniony / Odrzucony z kadry**", inline=False
+  )
+  embed.set_footer(
+      text="Pieniążek Auto OSLORP • System Kadr",
+      icon_url=(
+          interaction.guild.icon.url if interaction.guild.icon else None
+      ),
+  )
 
-  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID) or interaction.channel
-  await log_channel.send(content=f"{pracownik.mention}", embed=embed)
-  await interaction.response.send_message(f"✅ Pracownik {pracownik.mention} został pomyślnie zwolniony, a jego rangi pracownicze zostały odebrane.", ephemeral=True)
+  log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+  if log_channel:
+    await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+  await interaction.response.send_message(
+      f"✅ Pracownik {pracownik.mention} został pomyślnie zwolniony, a jego"
+      " rangi pracownicze zostały odebrane.",
+      ephemeral=True,
+  )
 
 
 @client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie")
@@ -690,7 +798,7 @@ async def raport(
       timestamp=datetime.now(),
   )
   embed.add_field(name="👤 Kto:", value=f"{interaction.user.mention}")
-  embed.add_field(name="💰 Za ile:", value=`{kwota}`)
+  embed.add_field(name="💰 Za ile:", value=f"{kwota}")
   if dowod.content_type and "image" in dowod.content_type:
     embed.set_image(url=dowod.url)
   await interaction.response.send_message(
