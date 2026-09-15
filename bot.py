@@ -156,17 +156,17 @@ class UstawDaneModal(Modal, title="Ustaw dane IC"):
 
 
 # ==============================================================================
-# SYSTEM WYMIANY TOKENÓW (SELECT MENU)
+# SYSTEM WYMIANY TOKENÓW (CENNIK ZE SCREENA)
 # ==============================================================================
 class WymianaSelect(Select):
 
-    def __init__(self, target_user: discord.User):
+    def __init__(self, target_user: discord.Member):
         self.target_user = target_user
         options = [
             discord.SelectOption(
                 label="Custom plakietka na 3 dni",
                 description="Koszt: 4 Tokeny",
-                value="plakietka_4",
+                value="plakietka_3_4",
                 emoji="🏷️",
             ),
             discord.SelectOption(
@@ -187,6 +187,24 @@ class WymianaSelect(Select):
                 value="kesz_600k_6",
                 emoji="💵",
             ),
+            discord.SelectOption(
+                label="Awans na Handlarz",
+                description="Koszt: 5 Tokenów",
+                value="awans_handlarz_5",
+                emoji="⭐",
+            ),
+            discord.SelectOption(
+                label="Awans na Doświadczony",
+                description="Koszt: 10 Tokenów",
+                value="awans_doswiadczony_10",
+                emoji="⭐",
+            ),
+            discord.SelectOption(
+                label="Awans na Specjalista",
+                description="Koszt: 12 Tokenów",
+                value="awans_specjalista_12",
+                emoji="⭐",
+            ),
         ]
         super().__init__(
             placeholder="Wybierz nagrodę z cennika...",
@@ -204,8 +222,9 @@ class WymianaSelect(Select):
         selection = self.values[0]
         cost = 0
         reward_name = ""
+        target_role_id = None
 
-        if selection == "plakietka_4":
+        if selection == "plakietka_3_4":
             cost = 4
             reward_name = "Custom plakietka na 3 dni"
         elif selection == "kesz_200k_2":
@@ -217,6 +236,18 @@ class WymianaSelect(Select):
         elif selection == "kesz_600k_6":
             cost = 6
             reward_name = "600k gotówki"
+        elif selection == "awans_handlarz_5":
+            cost = 5
+            reward_name = "Awans na Handlarz"
+            target_role_id = HANDLARZ_ROLE_ID
+        elif selection == "awans_doswiadczony_10":
+            cost = 10
+            reward_name = "Awans na Doświadczony"
+            target_role_id = DOSWIADCZONY_ROLE_ID
+        elif selection == "awans_specjalista_12":
+            cost = 12
+            reward_name = "Awans na Specjalista"
+            target_role_id = SPECJALISTA_ROLE_ID
 
         user_tokens = get_user_tokens(self.target_user.id)
 
@@ -226,12 +257,45 @@ class WymianaSelect(Select):
                     f"❌ Użytkownik **{self.target_user}** nie ma"
                     " wystarczającej liczby tokenów!\n> **Brak tokenów do"
                     f" wymiany.** (Posiada: **{user_tokens}**, Wymagane:"
-                    f" **${cost}**)"
+                    f" **{cost}**)"
                 ),
                 view=None,
             )
 
+        # Jeśli to awans, nadajemy rolę i usuwamy poprzednie rangi z listy GRADES
+        if target_role_id:
+            guild = interaction.guild
+            new_role = guild.get_role(target_role_id)
+            if not new_role:
+                return await interaction.response.edit_message(
+                    content=(
+                        "❌ Błąd: Nie znaleziono docelowej roli awansu na"
+                        " serwerze!"
+                    ),
+                    view=None,
+                )
+
+            try:
+                # Usuwamy stare rangi z listy GRADES
+                roles_to_remove = [
+                    guild.get_role(r_id)
+                    for r_id in GRADES
+                    if guild.get_role(r_id) in self.target_user.roles
+                ]
+                if roles_to_remove:
+                    await self.target_user.remove_roles(*roles_to_remove)
+                await self.target_user.add_roles(new_role)
+            except discord.Forbidden:
+                return await interaction.response.edit_message(
+                    content=(
+                        "❌ Bot nie ma uprawnień do zmiany ról tego"
+                        " użytkownika!"
+                    ),
+                    view=None,
+                )
+
         remove_user_tokens(self.target_user.id, cost)
+        remaining_tokens = get_user_tokens(self.target_user.id)
 
         log_channel = interaction.client.get_channel(TOKEN_LOG_CHANNEL_ID)
         if log_channel:
@@ -250,7 +314,7 @@ class WymianaSelect(Select):
             )
             embed.add_field(
                 name="🪙 Pobrane Tokeny",
-                value=f"-{cost} Token(y)",
+                value=f"-{cost} (Pozostało: {remaining_tokens})",
                 inline=True,
             )
             embed.add_field(
@@ -262,11 +326,15 @@ class WymianaSelect(Select):
                 content=f"{self.target_user.mention}", embed=embed
             )
 
+        # Odświeżamy listę pracowników jeśli nastąpił awans
+        if target_role_id:
+            await update_employee_list(interaction.guild)
+
         await interaction.response.edit_message(
             content=(
                 f"✅ Pomyślnie wymieniono **{cost} token(y)** dla użytkownika"
                 f" **{self.target_user}** na nagrodę: **{reward_name}**!"
-                " Powiadomienie wysłane na kanał."
+                f" Pozostałe tokeny: **{remaining_tokens}**."
             ),
             view=None,
         )
@@ -274,7 +342,7 @@ class WymianaSelect(Select):
 
 class WymianaView(View):
 
-    def __init__(self, author_id: int, target_user: discord.User):
+    def __init__(self, author_id: int, target_user: discord.Member):
         super().__init__(timeout=60)
         self.author_id = author_id
         self.add_item(WymianaSelect(target_user))
@@ -1368,7 +1436,7 @@ async def on_member_join(member: discord.Member):
 
 
 # ==============================================================================
-# KOMENDY SLASH
+# KOMENDY SLASH (ZARZĄDZANIE TOKENAMI I WYMIANA)
 # ==============================================================================
 @client.tree.command(
     name="wymiana", description="Panel wymiany tokenów dla zarządu"
@@ -1376,7 +1444,7 @@ async def on_member_join(member: discord.Member):
 @app_commands.describe(
     uzytkownik="Osoba, której tokeny mają zostać wymienione"
 )
-async def wymiana(interaction: Interaction, uzytkownik: discord.User):
+async def wymiana(interaction: Interaction, uzytkownik: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
             "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
@@ -1386,9 +1454,65 @@ async def wymiana(interaction: Interaction, uzytkownik: discord.User):
     await interaction.response.send_message(
         content=(
             f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
-            " poniższego cennika:"
+            " cennika:"
         ),
         view=view,
+        ephemeral=True,
+    )
+
+
+@client.tree.command(
+    name="dodaj_tokeny", description="Dodaje tokeny wybranemu użytkownikowi"
+)
+@app_commands.describe(
+    uzytkownik="Użytkownik, któremu chcesz dodać tokeny",
+    liczba="Liczba tokenów do dodania",
+)
+async def dodaj_tokeny(
+    interaction: Interaction, uzytkownik: discord.Member, liczba: int
+):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    if liczba <= 0:
+        return await interaction.response.send_message(
+            "❌ Liczba tokenów musi być większa niż 0!", ephemeral=True
+        )
+
+    add_user_tokens(uzytkownik.id, liczba)
+    total = get_user_tokens(uzytkownik.id)
+    await interaction.response.send_message(
+        f"✅ Pomyślnie dodano **{liczba}** token(y) dla użytkownika"
+        f" {uzytkownik.mention}. Aktualny stan: **{total}**.",
+        ephemeral=True,
+    )
+
+
+@client.tree.command(
+    name="odejmij_tokeny", description="Odejmuje tokeny wybranemu użytkownikowi"
+)
+@app_commands.describe(
+    uzytkownik="Użytkownik, któremu chcesz odjąć tokeny",
+    liczba="Liczba tokenów do odjęcia",
+)
+async def odejmij_tokeny(
+    interaction: Interaction, uzytkownik: discord.Member, liczba: int
+):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    if liczba <= 0:
+        return await interaction.response.send_message(
+            "❌ Liczba tokenów musi być większa niż 0!", ephemeral=True
+        )
+
+    remove_user_tokens(uzytkownik.id, liczba)
+    total = get_user_tokens(uzytkownik.id)
+    await interaction.response.send_message(
+        f"✅ Pomyślnie odjęto **{liczba}** token(y) użytkownikowi"
+        f" {uzytkownik.mention}. Aktualny stan: **{total}**.",
         ephemeral=True,
     )
 
