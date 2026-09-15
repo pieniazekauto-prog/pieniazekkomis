@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import json
 import os
 import threading
 import discord
@@ -21,6 +22,44 @@ def home():
 def run_flask():
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+
+# ==============================================================================
+# BAZA DANYCH (TOKENY - JSON)
+# ==============================================================================
+DB_FILE = "baza.json"
+
+
+def load_data():
+    if not os.path.exists(DB_FILE):
+        return {}
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_data(data):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def get_user_tokens(user_id):
+    data = load_data()
+    return data.get(str(user_id), 0)
+
+
+def remove_user_tokens(user_id, amount):
+    data = load_data()
+    current = data.get(str(user_id), 0)
+    new_amount = max(0, current - amount)
+    data[str(user_id)] = new_amount
+    save_data(data)
+
+
+def add_user_tokens(user_id, amount):
+    data = load_data()
+    current = data.get(str(user_id), 0)
+    data[str(user_id)] = current + amount
+    save_data(data)
 
 
 # ==============================================================================
@@ -60,6 +99,7 @@ WELCOME_CHANNEL_ID = 1503013291197202432
 AWANS_LOG_CHANNEL_ID = 1503394099661639680
 EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
+TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # ID kanału logów wymiany tokenów
 
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
@@ -70,10 +110,9 @@ WELCOME_IMAGE_URL = (
 # HELPER FUNCTIONS
 # ==============================================================================
 def is_zarzad(user: discord.Member) -> bool:
-    return (
-        any(role.id == ZARZAD_ROLE_ID for role in user.roles)
-        or user.guild_permissions.administrator
-    )
+    return any(
+        role.id == ZARZAD_ROLE_ID for role in user.roles
+    ) or user.guild_permissions.administrator
 
 
 def is_pracownik(user: discord.Member) -> bool:
@@ -114,6 +153,131 @@ class UstawDaneModal(Modal, title="Ustaw dane IC"):
                 "❌ Bot nie ma uprawnień do zmiany Twojego pseudonimu.",
                 ephemeral=True,
             )
+
+
+# ==============================================================================
+# SYSTEM WYMIANY TOKENÓW (SELECT MENU)
+# ==============================================================================
+class WymianaSelect(Select):
+
+    def __init__(self, target_user: discord.User):
+        self.target_user = target_user
+        options = [
+            discord.SelectOption(
+                label="Custom plakietka na 3 dni",
+                description="Koszt: 4 Tokeny",
+                value="plakietka_4",
+                emoji="🏷️",
+            ),
+            discord.SelectOption(
+                label="200k gotówki",
+                description="Koszt: 2 Tokeny",
+                value="kesz_200k_2",
+                emoji="💵",
+            ),
+            discord.SelectOption(
+                label="400k gotówki",
+                description="Koszt: 4 Tokeny",
+                value="kesz_400k_4",
+                emoji="💵",
+            ),
+            discord.SelectOption(
+                label="600k gotówki",
+                description="Koszt: 6 Tokenów",
+                value="kesz_600k_6",
+                emoji="💵",
+            ),
+        ]
+        super().__init__(
+            placeholder="Wybierz nagrodę z cennika...",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(self, interaction: Interaction):
+        if interaction.user.id != self.view.author_id:
+            return await interaction.response.send_message(
+                "Nie możesz użyć tego panelu!", ephemeral=True
+            )
+
+        selection = self.values[0]
+        cost = 0
+        reward_name = ""
+
+        if selection == "plakietka_4":
+            cost = 4
+            reward_name = "Custom plakietka na 3 dni"
+        elif selection == "kesz_200k_2":
+            cost = 2
+            reward_name = "200k gotówki"
+        elif selection == "kesz_400k_4":
+            cost = 4
+            reward_name = "400k gotówki"
+        elif selection == "kesz_600k_6":
+            cost = 6
+            reward_name = "600k gotówki"
+
+        user_tokens = get_user_tokens(self.target_user.id)
+
+        if user_tokens < cost:
+            return await interaction.response.edit_message(
+                content=(
+                    f"❌ Użytkownik **{self.target_user}** nie ma"
+                    " wystarczającej liczby tokenów!\n> **Brak tokenów do"
+                    f" wymiany.** (Posiada: **{user_tokens}**, Wymagane:"
+                    f" **${cost}**)"
+                ),
+                view=None,
+            )
+
+        remove_user_tokens(self.target_user.id, cost)
+
+        log_channel = interaction.client.get_channel(TOKEN_LOG_CHANNEL_ID)
+        if log_channel:
+            embed = discord.Embed(
+                title="🔄 Nowa Wymiana Tokenów", color=discord.Color.gold()
+            )
+            embed.add_field(
+                name="👤 Użytkownik",
+                value=f"{self.target_user.mention} ({self.target_user})",
+                inline=True,
+            )
+            embed.add_field(
+                name="🛡️ Obsłużył zarząd",
+                value=f"{interaction.user.mention} ({interaction.user})",
+                inline=True,
+            )
+            embed.add_field(
+                name="🪙 Pobrane Tokeny",
+                value=f"-{cost} Token(y)",
+                inline=True,
+            )
+            embed.add_field(
+                name="🎁 Zyskana Nagroda", value=reward_name, inline=False
+            )
+            embed.set_timestamp()
+
+            await log_channel.send(
+                content=f"{self.target_user.mention}", embed=embed
+            )
+
+        await interaction.response.edit_message(
+            content=(
+                f"✅ Pomyślnie wymieniono **{cost} token(y)** dla użytkownika"
+                f" **{self.target_user}** na nagrodę: **{reward_name}**!"
+                " Powiadomienie wysłane na kanał."
+            ),
+            view=None,
+        )
+
+
+class WymianaView(View):
+
+    def __init__(self, author_id: int, target_user: discord.User):
+        super().__init__(timeout=60)
+        self.author_id = author_id
+        self.add_item(WymianaSelect(target_user))
 
 
 # ==============================================================================
@@ -179,7 +343,8 @@ class WelcomeTicketView(View):
             )
         else:
             await interaction.response.send_message(
-                "ℹ️ Masz już tę rolę lub wystąpił błąd uprawnień.", ephemeral=True
+                "ℹ️ Masz już tę rolę lub wystąpił błąd uprawnień.",
+                ephemeral=True,
             )
 
     @button(
@@ -243,16 +408,19 @@ class WelcomeTicketView(View):
             embed = discord.Embed(
                 title="✦ PIENIĄŻEK AUTO | OFICJALNE PODANIE",
                 description=(
-                    f"Witaj {interaction.user.mention} w strefie podania!\n\nUzupełnij"
-                    " poniższy wzór:\n```text\n1. Imię:\n2. Nazwisko:\n3. Wiek:\n4."
-                    " Mutacja:\n5. Stan konta (zdjęcie):\n6. Ilość aut"
-                    " (zdjęcie):\n7. SS dowodu osobistego (zdjęcie):\n8. Czy byłeś"
-                    " karany:\n9. Doświadczenie w komisach:\n```"
+                    f"Witaj {interaction.user.mention} w strefie"
+                    " podania!\n\nUzupełnij poniższy wzór:\n```text\n1."
+                    " Imię:\n2. Nazwisko:\n3. Wiek:\n4. Mutacja:\n5. Stan konta"
+                    " (zdjęcie):\n6. Ilość aut (zdjęcie):\n7. SS dowodu"
+                    " osobistego (zdjęcie):\n8. Czy byłeś karany:\n9."
+                    " Doświadczenie w komisach:\n```"
                 ),
                 color=discord.Color.gold(),
                 timestamp=datetime.now(),
             )
-            embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+            embed.set_footer(
+                text="© Pieniążek Auto OSLORP | powered by Keshy Dev"
+            )
             zarzad_view = PodanieZarzadView(applicant=interaction.user)
             await ticket_channel.send(
                 content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
@@ -267,12 +435,15 @@ class WelcomeTicketView(View):
                 title="✦ PIENIĄŻEK AUTO | STREFA POMOCY",
                 description=(
                     f"Witaj {interaction.user.mention}!\n\nOpisz dokładnie swój"
-                    " problem lub sprawę. Zarząd odpowie najszybciej jak to możliwe."
+                    " problem lub sprawę. Zarząd odpowie najszybciej jak to"
+                    " możliwe."
                 ),
                 color=discord.Color.gold(),
                 timestamp=datetime.now(),
             )
-            embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
+            embed.set_footer(
+                text="© Pieniążek Auto OSLORP | powered by Keshy Dev"
+            )
             await ticket_channel.send(
                 content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
                 embed=embed,
@@ -502,7 +673,6 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
     if not target_message or not target_embed:
         return
 
-    # Wyciągamy obecną datę z istniejącego embedu
     old_content = target_embed.description
     date_str = None
     for line in old_content.split("\n"):
@@ -510,10 +680,8 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
             date_str = line.split("`")[1]
             break
 
-    # Tworzymy nową strukturę z aktualnymi rolami użytkowników
     new_embed = await generate_fees_embed(guild, date_str)
 
-    # Przenosimy zapamiętane statusy ✅ ze starego embedu
     old_lines = old_content.split("\n")
     paid_user_ids = set()
     for line in old_lines:
@@ -917,7 +1085,9 @@ class PowodHRModal(Modal):
                 inline=True,
             )
             embed.add_field(
-                name="👑 Decyzja", value=f"{interaction.user.mention}", inline=True
+                name="👑 Decyzja",
+                value=f"{interaction.user.mention}",
+                inline=True,
             )
             embed.add_field(
                 name="📈 Poprzednia Ranga",
@@ -935,7 +1105,9 @@ class PowodHRModal(Modal):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
                 icon_url=(
-                    interaction.guild.icon.url if interaction.guild.icon else None
+                    interaction.guild.icon.url
+                    if interaction.guild.icon
+                    else None
                 ),
             )
 
@@ -984,7 +1156,9 @@ class PowodHRModal(Modal):
                 inline=True,
             )
             embed.add_field(
-                name="👑 Decyzja", value=f"{interaction.user.mention}", inline=True
+                name="👑 Decyzja",
+                value=f"{interaction.user.mention}",
+                inline=True,
             )
             embed.add_field(
                 name="📉 Poprzednia Ranga",
@@ -1002,7 +1176,9 @@ class PowodHRModal(Modal):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
                 icon_url=(
-                    interaction.guild.icon.url if interaction.guild.icon else None
+                    interaction.guild.icon.url
+                    if interaction.guild.icon
+                    else None
                 ),
             )
 
@@ -1036,7 +1212,9 @@ class TicketCloseConfirmView(View):
             return await interaction.response.send_message(
                 "❌ Tylko Zarząd może usunąć ticket!", ephemeral=True
             )
-        await interaction.response.send_message("🔒 Usuwanie kanału za 3 sekundy...")
+        await interaction.response.send_message(
+            "🔒 Usuwanie kanału za 3 sekundy..."
+        )
         import asyncio
 
         await asyncio.sleep(3)
@@ -1045,7 +1223,9 @@ class TicketCloseConfirmView(View):
     @button(label="Anuluj", style=ButtonStyle.secondary, custom_id="canc_close")
     async def cancel_close(self, interaction: Interaction, button: Button):
         await interaction.message.delete()
-        await interaction.response.send_message("✅ Anulowano.", ephemeral=True)
+        await interaction.response.send_message(
+            "✅ Anulowano.", ephemeral=True
+        )
 
 
 class TicketCloseView(View):
@@ -1144,7 +1324,6 @@ async def on_ready():
 async def on_member_update(before: discord.Member, after: discord.Member):
     if after.guild.id != GUILD_ID:
         return
-    # Sprawdzamy czy zmieniły się role
     if before.roles != after.roles:
         try:
             await update_employee_list(after.guild)
@@ -1191,6 +1370,29 @@ async def on_member_join(member: discord.Member):
 # ==============================================================================
 # KOMENDY SLASH
 # ==============================================================================
+@client.tree.command(
+    name="wymiana", description="Panel wymiany tokenów dla zarządu"
+)
+@app_commands.describe(
+    uzytkownik="Osoba, której tokeny mają zostać wymienione"
+)
+async def wymiana(interaction: Interaction, uzytkownik: discord.User):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
+            ephemeral=True,
+        )
+    view = WymianaView(interaction.user.id, uzytkownik)
+    await interaction.response.send_message(
+        content=(
+            f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
+            " poniższego cennika:"
+        ),
+        view=view,
+        ephemeral=True,
+    )
+
+
 @client.tree.command(
     name="setup_panel", description="Wysyła odświeżony panel główny komisu"
 )
