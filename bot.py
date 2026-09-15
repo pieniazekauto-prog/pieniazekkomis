@@ -99,7 +99,7 @@ WELCOME_CHANNEL_ID = 1503013291197202432
 AWANS_LOG_CHANNEL_ID = 1503394099661639680
 EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
-TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # ID kanału logów wymiany tokenów
+TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
 
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
@@ -262,7 +262,6 @@ class WymianaSelect(Select):
                 view=None,
             )
 
-        # Jeśli to awans, nadajemy rolę i usuwamy poprzednie rangi z listy GRADES
         if target_role_id:
             guild = interaction.guild
             new_role = guild.get_role(target_role_id)
@@ -276,7 +275,6 @@ class WymianaSelect(Select):
                 )
 
             try:
-                # Usuwamy stare rangi z listy GRADES
                 roles_to_remove = [
                     guild.get_role(r_id)
                     for r_id in GRADES
@@ -297,36 +295,52 @@ class WymianaSelect(Select):
         remove_user_tokens(self.target_user.id, cost)
         remaining_tokens = get_user_tokens(self.target_user.id)
 
+        # Profesjonalny log wymiany tokenów
         log_channel = interaction.client.get_channel(TOKEN_LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
-                title="🔄 Nowa Wymiana Tokenów", color=discord.Color.gold()
+                title="✦ PIENIĄŻEK AUTO | WYMIANA TOKENÓW",
+                description=(
+                    "Użytkownik dokonał wymiany zgromadzonych tokenów na"
+                    " nagrodę."
+                ),
+                color=discord.Color.gold(),
+                timestamp=datetime.now(),
             )
+            embed.set_thumbnail(url=self.target_user.display_avatar.url)
             embed.add_field(
                 name="👤 Użytkownik",
-                value=f"{self.target_user.mention} ({self.target_user})",
+                value=f"{self.target_user.mention}\n`ID: {self.target_user.id}`",
                 inline=True,
             )
             embed.add_field(
-                name="🛡️ Obsłużył zarząd",
-                value=f"{interaction.user.mention} ({interaction.user})",
+                name="👑 Zarząd (Obsługa)",
+                value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
                 inline=True,
             )
             embed.add_field(
-                name="🪙 Pobrane Tokeny",
-                value=f"-{cost} (Pozostało: {remaining_tokens})",
-                inline=True,
+                name="🎁 Wybrana Nagroda",
+                value=f"```css\n[{reward_name}]\n```",
+                inline=False,
             )
             embed.add_field(
-                name="🎁 Zyskana Nagroda", value=reward_name, inline=False
+                name="🪙 Bilans Tokenów",
+                value=(
+                    f"Pobrane: `-{cost}`\nPozostało:"
+                    f" **{remaining_tokens}** token(ów)"
+                ),
+                inline=False,
             )
-            embed.set_timestamp()
-
+            embed.set_footer(
+                text="© Pieniążek Auto OSLORP | System Tokenów",
+                icon_url=(
+                    interaction.guild.icon.url if interaction.guild.icon else None
+                ),
+            )
             await log_channel.send(
                 content=f"{self.target_user.mention}", embed=embed
             )
 
-        # Odświeżamy listę pracowników jeśli nastąpił awans
         if target_role_id:
             await update_employee_list(interaction.guild)
 
@@ -1482,6 +1496,40 @@ async def dodaj_tokeny(
 
     add_user_tokens(uzytkownik.id, liczba)
     total = get_user_tokens(uzytkownik.id)
+
+    # Profesjonalny log dodania tokenów
+    log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(
+            title="✦ PIENIĄŻEK AUTO | DODANIE TOKENÓW",
+            description="Zarząd przyznał dodatkowe tokeny użytkownikowi.",
+            color=discord.Color.green(),
+            timestamp=datetime.now(),
+        )
+        embed.set_thumbnail(url=uzytkownik.display_avatar.url)
+        embed.add_field(
+            name="👤 Użytkownik",
+            value=f"{uzytkownik.mention}\n`ID: {uzytkownik.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="👑 Zarząd",
+            value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="🪙 Zmiana Salda",
+            value=f"Dodano: `+{liczba}`\nAktualny stan: **{total}** token(ów)",
+            inline=False,
+        )
+        embed.set_footer(
+            text="© Pieniążek Auto OSLORP | System Tokenów",
+            icon_url=(
+                interaction.guild.icon.url if interaction.guild.icon else None
+            ),
+        )
+        await log_channel.send(content=f"{uzytkownik.mention}", embed=embed)
+
     await interaction.response.send_message(
         f"✅ Pomyślnie dodano **{liczba}** token(y) dla użytkownika"
         f" {uzytkownik.mention}. Aktualny stan: **{total}**.",
@@ -1510,6 +1558,40 @@ async def odejmij_tokeny(
 
     remove_user_tokens(uzytkownik.id, liczba)
     total = get_user_tokens(uzytkownik.id)
+
+    # Profesjonalny log odjęcia tokenów
+    log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(
+            title="✦ PIENIĄŻEK AUTO | ODJĘCIE TOKENÓW",
+            description="Zarząd odjął tokeny z konta użytkownika.",
+            color=discord.Color.red(),
+            timestamp=datetime.now(),
+        )
+        embed.set_thumbnail(url=uzytkownik.display_avatar.url)
+        embed.add_field(
+            name="👤 Użytkownik",
+            value=f"{uzytkownik.mention}\n`ID: {uzytkownik.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="👑 Zarząd",
+            value=f"{interaction.user.mention}\n`ID: {interaction.user.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="🪙 Zmiana Salda",
+            value=f"Odjęto: `-{liczba}`\nAktualny stan: **{total}** token(ów)",
+            inline=False,
+        )
+        embed.set_footer(
+            text="© Pieniążek Auto OSLORP | System Tokenów",
+            icon_url=(
+                interaction.guild.icon.url if interaction.guild.icon else None
+            ),
+        )
+        await log_channel.send(content=f"{uzytkownik.mention}", embed=embed)
+
     await interaction.response.send_message(
         f"✅ Pomyślnie odjęto **{liczba}** token(y) użytkownikowi"
         f" {uzytkownik.mention}. Aktualny stan: **{total}**.",
