@@ -1450,39 +1450,21 @@ async def on_member_join(member: discord.Member):
 
 
 # ==============================================================================
-# KOMENDY SLASH (ZARZĄDZANIE TOKENAMI I WYMIANA)
+# KOMENDY SLASH (ZARZĄDZANIE TOKENAMI I WYMIANA - GRUPA /token)
 # ==============================================================================
-@client.tree.command(
-    name="wymiana", description="Panel wymiany tokenów dla zarządu"
+token_group = app_commands.Group(
+    name="token", description="System zarządzania tokenami Pieniążek Auto"
 )
-@app_commands.describe(
-    uzytkownik="Osoba, której tokeny mają zostać wymienione"
-)
-async def wymiana(interaction: Interaction, uzytkownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
-            ephemeral=True,
-        )
-    view = WymianaView(interaction.user.id, uzytkownik)
-    await interaction.response.send_message(
-        content=(
-            f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
-            " cennika:"
-        ),
-        view=view,
-        ephemeral=True,
-    )
 
 
-@client.tree.command(
-    name="dodaj_tokeny", description="Dodaje tokeny wybranemu użytkownikowi"
+@token_group.command(
+    name="dodaj", description="Dodaje tokeny wybranemu użytkownikowi (Zarząd)"
 )
 @app_commands.describe(
     uzytkownik="Użytkownik, któremu chcesz dodać tokeny",
     liczba="Liczba tokenów do dodania",
 )
-async def dodaj_tokeny(
+async def token_dodaj(
     interaction: Interaction, uzytkownik: discord.Member, liczba: int
 ):
     if not is_zarzad(interaction.user):
@@ -1497,7 +1479,6 @@ async def dodaj_tokeny(
     add_user_tokens(uzytkownik.id, liczba)
     total = get_user_tokens(uzytkownik.id)
 
-    # Profesjonalny log dodania tokenów
     log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
     if log_channel:
         embed = discord.Embed(
@@ -1537,14 +1518,14 @@ async def dodaj_tokeny(
     )
 
 
-@client.tree.command(
-    name="odejmij_tokeny", description="Odejmuje tokeny wybranemu użytkownikowi"
+@token_group.command(
+    name="odejmij", description="Odejmuje tokeny wybranemu użytkownikowi (Zarząd)"
 )
 @app_commands.describe(
     uzytkownik="Użytkownik, któremu chcesz odjąć tokeny",
     liczba="Liczba tokenów do odjęcia",
 )
-async def odejmij_tokeny(
+async def token_odejmij(
     interaction: Interaction, uzytkownik: discord.Member, liczba: int
 ):
     if not is_zarzad(interaction.user):
@@ -1559,7 +1540,6 @@ async def odejmij_tokeny(
     remove_user_tokens(uzytkownik.id, liczba)
     total = get_user_tokens(uzytkownik.id)
 
-    # Profesjonalny log odjęcia tokenów
     log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
     if log_channel:
         embed = discord.Embed(
@@ -1595,6 +1575,83 @@ async def odejmij_tokeny(
     await interaction.response.send_message(
         f"✅ Pomyślnie odjęto **{liczba}** token(y) użytkownikowi"
         f" {uzytkownik.mention}. Aktualny stan: **{total}**.",
+        ephemeral=True,
+    )
+
+
+@token_group.command(
+    name="status", description="Sprawdź stan swoich zgromadzonych tokenów"
+)
+async def token_status(interaction: Interaction):
+    if not is_pracownik(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Ta komenda jest dostępna tylko dla pracowników!", ephemeral=True
+        )
+
+    tokens = get_user_tokens(interaction.user.id)
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO | STAN TOKENÓW",
+        description=(
+            f"Pracownik: {interaction.user.mention}\nAktualny stan konta:"
+            f" **{tokens}** token(ów)"
+        ),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+    embed.set_footer(text="© Pieniążek Auto OSLORP | System Tokenów")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@token_group.command(
+    name="zarzad", description="Sprawdź stan tokenów wybranego użytkownika (Zarząd)"
+)
+@app_commands.describe(uzytkownik="Wybrany pracownik")
+async def token_zarzad(interaction: Interaction, uzytkownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień do użycia tej komendy!", ephemeral=True
+        )
+
+    tokens = get_user_tokens(uzytkownik.id)
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO | ZARZĄD - STAN TOKENÓW",
+        description=(
+            f"Sprawdzany użytkownik: {uzytkownik.mention}\nStan konta:"
+            f" **{tokens}** token(ów)"
+        ),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_thumbnail(url=uzytkownik.display_avatar.url)
+    embed.set_footer(text="© Pieniążek Auto OSLORP | System Zarządu")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+client.tree.add_command(token_group)
+
+
+@client.tree.command(
+    name="tokenwymiana", description="Panel wymiany tokenów dla zarządu"
+)
+@app_commands.describe(
+    uzytkownik="Osoba, której tokeny mają zostać wymienione"
+)
+async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
+            ephemeral=True,
+        )
+    view = WymianaView(interaction.user.id, uzytkownik)
+    await interaction.response.send_message(
+        content=(
+            f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
+            " cennika:"
+        ),
+        view=view,
         ephemeral=True,
     )
 
