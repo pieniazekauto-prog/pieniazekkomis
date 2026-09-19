@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import threading
+import certifi
 import discord
 from discord import ButtonStyle, Interaction, app_commands
 from discord.ext import commands, tasks
@@ -29,7 +30,7 @@ def run_flask():
 # BAZA DANYCH (MONGODB ATLAS W CHMURZE)
 # ==============================================================================
 MONGO_URI = os.getenv("MONGO_URI")
-mongo_client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = mongo_client["pieniazek_auto_db"]
 tokens_collection = db["tokens"]
 
