@@ -100,7 +100,7 @@ AWANS_LOG_CHANNEL_ID = 1503394099661639680
 EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
 TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
-TOKEN_LIST_CHANNEL_ID = 1549332231246446694  # Kanał listy tokenów (domyślnie podpięty pod logi lub osobne ID)
+TOKEN_LIST_CHANNEL_ID = 1548103462368321646  # Nowe ID kanału listy tokenów
 
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
@@ -350,7 +350,6 @@ class WymianaSelect(Select):
         await update_token_list_embed(interaction.guild)
         remaining_tokens = get_user_tokens(self.target_user.id)
 
-        # Profesjonalny log wymiany tokenów
         log_channel = interaction.client.get_channel(TOKEN_LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -1506,10 +1505,12 @@ async def on_member_join(member: discord.Member):
 
 
 # ==============================================================================
-# KOMENDY SLASH (ZARZĄDZANIE TOKENAMI I WYMIANA - GRUPA /token)
+# KOMENDY SLASH – PODZIAŁ NA SEKCJE (GRUPY)
 # ==============================================================================
+
+# SEKCJA: TOKENY
 token_group = app_commands.Group(
-    name="token", description="System zarządzania tokenami Pieniążek Auto"
+    name="token", description="🪙 [Sekcja Tokenów] Zarządzanie i sprawdzenie tokenów"
 )
 
 
@@ -1691,83 +1692,14 @@ async def token_zarzad(interaction: Interaction, uzytkownik: discord.Member):
 client.tree.add_command(token_group)
 
 
-@client.tree.command(
-    name="tokenwymiana", description="Panel wymiany tokenów dla zarządu"
+# SEKCJA: ZARZĄD I KADRA (HR)
+zarzad_group = app_commands.Group(
+    name="zarzad", description="👑 [Sekcja Zarządu] Awansowanie, degradacja, zatrudnianie"
 )
-@app_commands.describe(
-    uzytkownik="Osoba, której tokeny mają zostać wymienione"
-)
-async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
-            ephemeral=True,
-        )
-    view = WymianaView(interaction.user.id, uzytkownik)
-    await interaction.response.send_message(
-        content=(
-            f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
-            " cennika:"
-        ),
-        view=view,
-        ephemeral=True,
-    )
 
 
-@client.tree.command(
-    name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów"
-)
-async def panel_tokenow(interaction: Interaction):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-    await update_token_list_embed(interaction.guild)
-    await interaction.response.send_message(
-        "✅ Wygenerowano/odświeżono panel rankingu tokenów!", ephemeral=True
-    )
-
-
-@client.tree.command(
-    name="setup_panel", description="Wysyła odświeżony panel główny komisu"
-)
-async def setup_panel(interaction: Interaction):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-
-    embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO OSLORP | CENTRUM DOWODZENIA",
-        description=(
-            "Witaj w oficjalnym systemie zarządzania komisem **Pieniążek"
-            " Auto**!\n\n> *Skup • Sprzedaż • Profesjonalna obsługa klientów na"
-            " terenie OSLORP.*\n\n"
-            "**Dostępne akcje:**\n"
-            "• **✏️ Ustaw dane IC** – zaktualizuj swoje in-game ID/pseudonim.\n"
-            "• **📄 Podanie o pracę** – dołącz do naszego zespołu.\n"
-            "• **👑 Strefa Zarządu** – otwórz poufny ticket do kadry."
-        ),
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
-    )
-    embed.set_image(url=WELCOME_IMAGE_URL)
-    embed.set_footer(
-        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
-        icon_url=(
-            interaction.guild.icon.url if interaction.guild.icon else None
-        ),
-    )
-
-    await interaction.channel.send(embed=embed, view=SetupPanelView())
-    await interaction.response.send_message(
-        "✅ Pomyślnie wysłano panel!", ephemeral=True
-    )
-
-
-@client.tree.command(
-    name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak"
-)
+@zarzad_group.command(name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak")
+@app_commands.describe(pracownik="Wybrany użytkownik do zatrudnienia")
 async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -1831,10 +1763,165 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     )
 
 
-@client.tree.command(
-    name="panel_pracownikow",
-    description="Wysyła lub odświeża automatyczną listę pracowników",
-)
+@zarzad_group.command(name="awans", description="Awansuj pracownika na wyższą rangę")
+@app_commands.describe(pracownik="Pracownik do awansu")
+async def awans(interaction: Interaction, pracownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    await interaction.response.send_modal(PowodHRModal("awans", pracownik))
+
+
+@zarzad_group.command(name="degrad", description="Zdegraduj pracownika na niższą rangę")
+@app_commands.describe(pracownik="Pracownik do degradacji")
+async def degrad(interaction: Interaction, pracownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    await interaction.response.send_modal(PowodHRModal("degrad", pracownik))
+
+
+@zarzad_group.command(name="zwolnienie", description="Zwolnij pracownika z komisu")
+@app_commands.describe(pracownik="Pracownik do zwolnienia")
+async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+
+    roles_to_remove = [
+        r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+    ]
+    try:
+        if roles_to_remove:
+            await pracownik.remove_roles(*roles_to_remove)
+    except discord.Forbidden:
+        return await interaction.response.send_message(
+            "⚠️ Brak uprawnień bota!", ephemeral=True
+        )
+
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
+        description=f"Pracownik {pracownik.mention} został zwolniony z komisu.",
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_thumbnail(url=pracownik.display_avatar.url)
+    embed.add_field(
+        name="👤 Zwolniony",
+        value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
+        inline=True,
+    )
+    embed.add_field(
+        name="👑 Zarząd", value=f"{interaction.user.mention}", inline=True
+    )
+    embed.add_field(
+        name="📊 Status", value="**Zwolniony z szeregów**", inline=False
+    )
+    embed.set_footer(
+        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+        icon_url=(
+            interaction.guild.icon.url if interaction.guild.icon else None
+        ),
+    )
+
+    log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+    if log_channel:
+        await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+
+    await update_employee_list(interaction.guild)
+    await interaction.response.send_message(
+        f"✅ Zwolniono pracownika {pracownik.mention}.", ephemeral=True
+    )
+
+
+@zarzad_group.command(name="mandat", description="Wystaw oficjalny mandat dyscyplinarny")
+@app_commands.describe(pracownik="Pracownik, któremu wystawiasz mandat")
+async def mandat(interaction: Interaction, pracownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    await interaction.response.send_message(
+        f"⚙️ Wybierz mandat dla {pracownik.mention}:",
+        view=MandatView(pracownik, interaction.user),
+        ephemeral=True,
+    )
+
+
+client.tree.add_command(zarzad_group)
+
+
+# POZOSTAŁE KOMENDY GLOBALNE
+@client.tree.command(name="tokenwymiana", description="Panel wymiany tokenów dla zarządu")
+@app_commands.describe(uzytkownik="Osoba, której tokeny mają zostać wymienione")
+async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Nie masz uprawnień do użycia tej komendy (wymagany zarząd).",
+            ephemeral=True,
+        )
+    view = WymianaView(interaction.user.id, uzytkownik)
+    await interaction.response.send_message(
+        content=(
+            f"Panel wymiany dla użytkownika **{uzytkownik}**. Wybierz nagrodę z"
+            " cennika:"
+        ),
+        view=view,
+        ephemeral=True,
+    )
+
+
+@client.tree.command(name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów")
+async def panel_tokenow(interaction: Interaction):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    await update_token_list_embed(interaction.guild)
+    await interaction.response.send_message(
+        "✅ Wygenerowano/odświeżono panel rankingu tokenów!", ephemeral=True
+    )
+
+
+@client.tree.command(name="setup_panel", description="Wysyła odświeżony panel główny komisu")
+async def setup_panel(interaction: Interaction):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO OSLORP | CENTRUM DOWODZENIA",
+        description=(
+            "Witaj w oficjalnym systemie zarządzania komisem **Pieniążek"
+            " Auto**!\n\n> *Skup • Sprzedaż • Profesjonalna obsługa klientów na"
+            " terenie OSLORP.*\n\n"
+            "**Dostępne akcje:**\n"
+            "• **✏️ Ustaw dane IC** – zaktualizuj swoje in-game ID/pseudonim.\n"
+            "• **📄 Podanie o pracę** – dołącz do naszego zespołu.\n"
+            "• **👑 Strefa Zarządu** – otwórz poufny ticket do kadry."
+        ),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_image(url=WELCOME_IMAGE_URL)
+    embed.set_footer(
+        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+        icon_url=(
+            interaction.guild.icon.url if interaction.guild.icon else None
+        ),
+    )
+
+    await interaction.channel.send(embed=embed, view=SetupPanelView())
+    await interaction.response.send_message(
+        "✅ Pomyślnie wysłano panel!", ephemeral=True
+    )
+
+
+@client.tree.command(name="panel_pracownikow", description="Wysyła lub odświeża automatyczną listę pracowników")
 async def panel_pracownikow(interaction: Interaction):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -1846,9 +1933,7 @@ async def panel_pracownikow(interaction: Interaction):
     )
 
 
-@client.tree.command(
-    name="panel_oplat", description="Tworzy panel opłat pracowniczych na dany tydzień"
-)
+@client.tree.command(name="panel_oplat", description="Tworzy panel opłat pracowniczych na dany tydzień")
 @app_commands.describe(zakres_dat="Opcjonalnie np. 14.09.2026 do 20.09.2026")
 async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
     if not is_zarzad(interaction.user):
@@ -1872,9 +1957,7 @@ async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
     )
 
 
-@client.tree.command(
-    name="oplata", description="Zmienia status opłaty wybranego pracownika (❌ / ✅)"
-)
+@client.tree.command(name="oplata", description="Zmienia status opłaty wybranego pracownika (❌ / ✅)")
 @app_commands.describe(pracownik="Wybierz pracownika z listy")
 async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -2015,6 +2098,7 @@ async def skip_ticket(interaction: Interaction):
 
 
 @client.tree.command(name="add", description="Dodaje użytkownika do ticketa")
+@app_commands.describe(member="Użytkownik do dodania")
 async def add_member(interaction: Interaction, member: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -2029,6 +2113,7 @@ async def add_member(interaction: Interaction, member: discord.Member):
 
 
 @client.tree.command(name="remove", description="Wyrzuca użytkownika z ticketa")
+@app_commands.describe(member="Użytkownik do usunięcia")
 async def remove_member(interaction: Interaction, member: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -2056,6 +2141,7 @@ async def close_ticket_cmd(interaction: Interaction):
 
 
 @client.tree.command(name="testjoin", description="Testuje powitanie")
+@app_commands.describe(member="Użytkownik do testu")
 async def testjoin(interaction: Interaction, member: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -2091,78 +2177,7 @@ async def testjoin(interaction: Interaction, member: discord.Member):
     )
 
 
-@client.tree.command(name="awans", description="Awansuj pracownika")
-async def awans(interaction: Interaction, pracownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-    await interaction.response.send_modal(PowodHRModal("awans", pracownik))
-
-
-@client.tree.command(name="degrad", description="Zdegraduj pracownika")
-async def degrad(interaction: Interaction, pracownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-    await interaction.response.send_modal(PowodHRModal("degrad", pracownik))
-
-
-@client.tree.command(name="zwolnienie", description="Zwolnij pracownika")
-async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-
-    roles_to_remove = [
-        r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
-    ]
-    try:
-        if roles_to_remove:
-            await pracownik.remove_roles(*roles_to_remove)
-    except discord.Forbidden:
-        return await interaction.response.send_message(
-            "⚠️ Brak uprawnień bota!", ephemeral=True
-        )
-
-    embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
-        description=f"Pracownik {pracownik.mention} został zwolniony z komisu.",
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
-    )
-    embed.set_thumbnail(url=pracownik.display_avatar.url)
-    embed.add_field(
-        name="👤 Zwolniony",
-        value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="👑 Zarząd", value=f"{interaction.user.mention}", inline=True
-    )
-    embed.add_field(
-        name="📊 Status", value="**Zwolniony z szeregów**", inline=False
-    )
-    embed.set_footer(
-        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
-        icon_url=(
-            interaction.guild.icon.url if interaction.guild.icon else None
-        ),
-    )
-
-    log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
-    if log_channel:
-        await log_channel.send(content=f"{pracownik.mention}", embed=embed)
-
-    await update_employee_list(interaction.guild)
-    await interaction.response.send_message(
-        f"✅ Zwolniono pracownika {pracownik.mention}.", ephemeral=True
-    )
-
-
-@client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie")
+@client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie z pracy")
 async def wypowiedzenie(interaction: Interaction):
     if not is_pracownik(interaction.user):
         return await interaction.response.send_message(
@@ -2171,7 +2186,8 @@ async def wypowiedzenie(interaction: Interaction):
     await interaction.response.send_modal(WypowiedzenieModal())
 
 
-@client.tree.command(name="raport", description="Raport ze sprzedaży")
+@client.tree.command(name="raport", description="Wyślij raport ze sprzedaży")
+@app_commands.describe(kwota="Kwota ze sprzedaży lub auto", dowod="Screenshot dowodu")
 async def raport(
     interaction: Interaction, kwota: str, dowod: discord.Attachment
 ):
@@ -2207,19 +2223,6 @@ async def raport(
         content=f"<@&{ZARZAD_ROLE_ID}>",
         embed=embed,
         allowed_mentions=discord.AllowedMentions(roles=True),
-    )
-
-
-@client.tree.command(name="mandat", description="Wystaw mandat")
-async def mandat(interaction: Interaction, pracownik: discord.Member):
-    if not is_zarzad(interaction.user):
-        return await interaction.response.send_message(
-            "❌ Brak uprawnień!", ephemeral=True
-        )
-    await interaction.response.send_message(
-        f"⚙️ Wybierz mandat dla {pracownik.mention}:",
-        view=MandatView(pracownik, interaction.user),
-        ephemeral=True,
     )
 
 
