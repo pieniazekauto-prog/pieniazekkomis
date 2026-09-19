@@ -7,6 +7,7 @@ from discord import ButtonStyle, Interaction, app_commands
 from discord.ext import commands, tasks
 from discord.ui import Button, Modal, Select, TextInput, View, button
 from flask import Flask
+from pymongo import MongoClient
 
 # ==============================================================================
 # FLASK SERVER (Dla Render.com - zapobiega uśpieniu bota)
@@ -25,41 +26,53 @@ def run_flask():
 
 
 # ==============================================================================
-# BAZA DANYCH (TOKENY - JSON)
+# BAZA DANYCH (MONGODB ATLAS W CHMURZE)
 # ==============================================================================
-DB_FILE = "baza.json"
+MONGO_URI = os.getenv("MONGO_URI")
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["pieniazek_auto_db"]
+tokens_collection = db["tokens"]
 
 
 def load_data():
-    if not os.path.exists(DB_FILE):
-        return {}
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Pobiera wszystkie dane tokenów z chmury MongoDB do słownika."""
+    data = {}
+    for doc in tokens_collection.find():
+        data[str(doc["user_id"])] = doc["tokens"]
+    return data
 
 
 def save_data(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    """Zapisuje cały słownik z powrotem do bazy w chmurze (upsert dla każdego)."""
+    for user_id, tokens in data.items():
+        tokens_collection.update_one(
+            {"user_id": str(user_id)},
+            {"$set": {"tokens": tokens}},
+            upsert=True,
+        )
 
 
 def get_user_tokens(user_id):
-    data = load_data()
-    return data.get(str(user_id), 0)
+    doc = tokens_collection.find_one({"user_id": str(user_id)})
+    if doc:
+        return doc.get("tokens", 0)
+    return 0
 
 
 def remove_user_tokens(user_id, amount):
-    data = load_data()
-    current = data.get(str(user_id), 0)
+    current = get_user_tokens(user_id)
     new_amount = max(0, current - amount)
-    data[str(user_id)] = new_amount
-    save_data(data)
+    tokens_collection.update_one(
+        {"user_id": str(user_id)}, {"$set": {"tokens": new_amount}}, upsert=True
+    )
 
 
 def add_user_tokens(user_id, amount):
-    data = load_data()
-    current = data.get(str(user_id), 0)
-    data[str(user_id)] = current + amount
-    save_data(data)
+    current = get_user_tokens(user_id)
+    new_amount = current + amount
+    tokens_collection.update_one(
+        {"user_id": str(user_id)}, {"$set": {"tokens": new_amount}}, upsert=True
+    )
 
 
 # ==============================================================================
@@ -152,7 +165,7 @@ async def update_token_list_embed(guild: discord.Guild):
             member = guild.get_member(uid)
             mention_str = member.mention if member else f"`ID: {uid}`"
             name_str = member.display_name if member else "Nieznany użytkownik"
-            
+
             medal = ""
             if index == 1:
                 medal = "🥇 "
@@ -163,7 +176,9 @@ async def update_token_list_embed(guild: discord.Guild):
             else:
                 medal = f"`{index}.` "
 
-            desc_lines.append(f"{medal}**{name_str}** | {mention_str} ➔ **{tokens}** token(ów)")
+            desc_lines.append(
+                f"{medal}**{name_str}** | {mention_str} ➔ **{tokens}** token(ów)"
+            )
     else:
         desc_lines.append("_Brak pracowników z tokenami na koncie._")
 
@@ -176,7 +191,11 @@ async def update_token_list_embed(guild: discord.Guild):
     embed.set_footer(text="© Pieniążek Auto OSLORP | Automatyczny system tokenów")
 
     async for message in channel.history(limit=10):
-        if message.author == guild.me and message.embeds and "RANKING TOKENÓW" in message.embeds[0].title:
+        if (
+            message.author == guild.me
+            and message.embeds
+            and "RANKING TOKENÓW" in message.embeds[0].title
+        ):
             await message.edit(embed=embed)
             return
 
@@ -388,7 +407,9 @@ class WymianaSelect(Select):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | System Tokenów",
                 icon_url=(
-                    interaction.guild.icon.url if interaction.guild.icon else None
+                    interaction.guild.icon.url
+                    if interaction.guild.icon
+                    else None
                 ),
             )
             await log_channel.send(
@@ -1698,7 +1719,9 @@ zarzad_group = app_commands.Group(
 )
 
 
-@zarzad_group.command(name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak")
+@zarzad_group.command(
+    name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak"
+)
 @app_commands.describe(pracownik="Wybrany użytkownik do zatrudnienia")
 async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -1763,7 +1786,9 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     )
 
 
-@zarzad_group.command(name="awans", description="Awansuj pracownika na wyższą rangę")
+@zarzad_group.command(
+    name="awans", description="Awansuj pracownika na wyższą rangę"
+)
 @app_commands.describe(pracownik="Pracownik do awansu")
 async def awans(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -1773,7 +1798,9 @@ async def awans(interaction: Interaction, pracownik: discord.Member):
     await interaction.response.send_modal(PowodHRModal("awans", pracownik))
 
 
-@zarzad_group.command(name="degrad", description="Zdegraduj pracownika na niższą rangę")
+@zarzad_group.command(
+    name="degrad", description="Zdegraduj pracownika na niższą rangę"
+)
 @app_commands.describe(pracownik="Pracownik do degradacji")
 async def degrad(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -1837,7 +1864,9 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
     )
 
 
-@zarzad_group.command(name="mandat", description="Wystaw oficjalny mandat dyscyplinarny")
+@zarzad_group.command(
+    name="mandat", description="Wystaw oficjalny mandat dyscyplinarny"
+)
 @app_commands.describe(pracownik="Pracownik, któremu wystawiasz mandat")
 async def mandat(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -1855,7 +1884,9 @@ client.tree.add_command(zarzad_group)
 
 
 # POZOSTAŁE KOMENDY GLOBALNE
-@client.tree.command(name="tokenwymiana", description="Panel wymiany tokenów dla zarządu")
+@client.tree.command(
+    name="tokenwymiana", description="Panel wymiany tokenów dla zarządu"
+)
 @app_commands.describe(uzytkownik="Osoba, której tokeny mają zostać wymienione")
 async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -1874,7 +1905,9 @@ async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
     )
 
 
-@client.tree.command(name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów")
+@client.tree.command(
+    name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów"
+)
 async def panel_tokenow(interaction: Interaction):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -1886,7 +1919,9 @@ async def panel_tokenow(interaction: Interaction):
     )
 
 
-@client.tree.command(name="setup_panel", description="Wysyła odświeżony panel główny komisu")
+@client.tree.command(
+    name="setup_panel", description="Wysyła odświeżony panel główny komisu"
+)
 async def setup_panel(interaction: Interaction):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -1921,7 +1956,10 @@ async def setup_panel(interaction: Interaction):
     )
 
 
-@client.tree.command(name="panel_pracownikow", description="Wysyła lub odświeża automatyczną listę pracowników")
+@client.tree.command(
+    name="panel_pracownikow",
+    description="Wysyła lub odświeża automatyczną listę pracowników",
+)
 async def panel_pracownikow(interaction: Interaction):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
@@ -1933,7 +1971,10 @@ async def panel_pracownikow(interaction: Interaction):
     )
 
 
-@client.tree.command(name="panel_oplat", description="Tworzy panel opłat pracowniczych na dany tydzień")
+@client.tree.command(
+    name="panel_oplat",
+    description="Tworzy panel opłat pracowniczych na dany tydzień",
+)
 @app_commands.describe(zakres_dat="Opcjonalnie np. 14.09.2026 do 20.09.2026")
 async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
     if not is_zarzad(interaction.user):
@@ -1957,7 +1998,10 @@ async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
     )
 
 
-@client.tree.command(name="oplata", description="Zmienia status opłaty wybranego pracownika (❌ / ✅)")
+@client.tree.command(
+    name="oplata",
+    description="Zmienia status opłaty wybranego pracownika (❌ / ✅)",
+)
 @app_commands.describe(pracownik="Wybierz pracownika z listy")
 async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
