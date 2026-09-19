@@ -100,6 +100,7 @@ AWANS_LOG_CHANNEL_ID = 1503394099661639680
 EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
 TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
+TOKEN_LIST_CHANNEL_ID = 1549332231246446694  # Kanał listy tokenów (domyślnie podpięty pod logi lub osobne ID)
 
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
@@ -127,6 +128,59 @@ def get_current_grade_index(member: discord.Member) -> int:
         if any(r.id == g_id for r in member.roles):
             highest_index = i
     return highest_index
+
+
+# ==============================================================================
+# SYSTEM LISTY TOKENÓW (AUTOMATYCZNA SYNCHRONIZACJA)
+# ==============================================================================
+async def update_token_list_embed(guild: discord.Guild):
+    channel = guild.get_channel(TOKEN_LIST_CHANNEL_ID)
+    if not channel:
+        return
+
+    data = load_data()
+    sorted_tokens = sorted(
+        [(int(uid), tokens) for uid, tokens in data.items() if tokens > 0],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+
+    desc_lines = ["> # 🪙 ⟡ Bilans Tokenów Pracowników\n"]
+
+    if sorted_tokens:
+        for index, (uid, tokens) in enumerate(sorted_tokens, start=1):
+            member = guild.get_member(uid)
+            mention_str = member.mention if member else f"`ID: {uid}`"
+            name_str = member.display_name if member else "Nieznany użytkownik"
+            
+            medal = ""
+            if index == 1:
+                medal = "🥇 "
+            elif index == 2:
+                medal = "🥈 "
+            elif index == 3:
+                medal = "🥉 "
+            else:
+                medal = f"`{index}.` "
+
+            desc_lines.append(f"{medal}**{name_str}** | {mention_str} ➔ **{tokens}** token(ów)")
+    else:
+        desc_lines.append("_Brak pracowników z tokenami na koncie._")
+
+    embed = discord.Embed(
+        title="✦ PIENIĄŻEK AUTO | RANKING TOKENÓW",
+        description="\n".join(desc_lines),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(),
+    )
+    embed.set_footer(text="© Pieniążek Auto OSLORP | Automatyczny system tokenów")
+
+    async for message in channel.history(limit=10):
+        if message.author == guild.me and message.embeds and "RANKING TOKENÓW" in message.embeds[0].title:
+            await message.edit(embed=embed)
+            return
+
+    await channel.send(embed=embed)
 
 
 # ==============================================================================
@@ -293,6 +347,7 @@ class WymianaSelect(Select):
                 )
 
         remove_user_tokens(self.target_user.id, cost)
+        await update_token_list_embed(interaction.guild)
         remaining_tokens = get_user_tokens(self.target_user.id)
 
         # Profesjonalny log wymiany tokenów
@@ -1354,6 +1409,7 @@ class MyClient(discord.Client):
         if guild:
             try:
                 await update_employee_list(guild)
+                await update_token_list_embed(guild)
             except Exception as e:
                 print(f"Błąd automatycznego odświeżania listy: {e}")
 
@@ -1477,6 +1533,7 @@ async def token_dodaj(
         )
 
     add_user_tokens(uzytkownik.id, liczba)
+    await update_token_list_embed(interaction.guild)
     total = get_user_tokens(uzytkownik.id)
 
     log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
@@ -1538,6 +1595,7 @@ async def token_odejmij(
         )
 
     remove_user_tokens(uzytkownik.id, liczba)
+    await update_token_list_embed(interaction.guild)
     total = get_user_tokens(uzytkownik.id)
 
     log_channel = interaction.guild.get_channel(TOKEN_LOG_CHANNEL_ID)
@@ -1653,6 +1711,20 @@ async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
         ),
         view=view,
         ephemeral=True,
+    )
+
+
+@client.tree.command(
+    name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów"
+)
+async def panel_tokenow(interaction: Interaction):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message(
+            "❌ Brak uprawnień!", ephemeral=True
+        )
+    await update_token_list_embed(interaction.guild)
+    await interaction.response.send_message(
+        "✅ Wygenerowano/odświeżono panel rankingu tokenów!", ephemeral=True
     )
 
 
