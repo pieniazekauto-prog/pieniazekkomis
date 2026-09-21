@@ -1175,7 +1175,7 @@ class PodanieZarzadView(View):
 
 
 # ==============================================================================
-# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU
+# MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU / ZWOLNIENIA
 # ==============================================================================
 class PowodHRModal(Modal):
 
@@ -1183,22 +1183,111 @@ class PowodHRModal(Modal):
         title_map = {
             "awans": "Podaj powód awansu",
             "degrad": "Podaj powód degradacji",
+            "zwolnienie": "Wniosek o zwolnienie pracownika",
         }
         super().__init__(title=title_map.get(action_type, "Powód HR"))
         self.action_type = action_type
         self.pracownik = pracownik
 
-        self.powod_input = TextInput(
-            label="Powód",
-            placeholder="Wpisz szczegółowy powód...",
-            style=discord.TextStyle.paragraph,
-            required=True,
-            max_length=1000,
-        )
-        self.add_item(self.powod_input)
+        if action_type == "zwolnienie":
+            self.powod_input = TextInput(
+                label="Powód zwolnienia",
+                placeholder="Wpisz powód zwolnienia...",
+                style=discord.TextStyle.paragraph,
+                required=True,
+                max_length=500,
+            )
+            self.data_input = TextInput(
+                label="Data dzisiejsza",
+                placeholder="np. 21.09.2026",
+                required=True,
+                max_length=20,
+            )
+            self.add_item(self.powod_input)
+            self.add_item(self.data_input)
+        else:
+            self.powod_input = TextInput(
+                label="Powód",
+                placeholder="Wpisz szczegółowy powód...",
+                style=discord.TextStyle.paragraph,
+                required=True,
+                max_length=1000,
+            )
+            self.add_item(self.powod_input)
 
     async def on_submit(self, interaction: Interaction):
         powod_tekst = self.powod_input.value
+
+        if self.action_type == "zwolnienie":
+            data_tekst = self.data_input.value
+            guild = interaction.guild
+            obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
+
+            roles_to_remove = [
+                r
+                for r in self.pracownik.roles
+                if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+            ]
+            try:
+                if roles_to_remove:
+                    await self.pracownik.remove_roles(*roles_to_remove)
+                if obywatel_role and obywatel_role not in self.pracownik.roles:
+                    await self.pracownik.add_roles(obywatel_role)
+            except discord.Forbidden:
+                return await interaction.response.send_message(
+                    "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
+                )
+
+            embed = discord.Embed(
+                title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
+                description=(
+                    f"Pracownik {self.pracownik.mention} został zwolniony z"
+                    " komisu."
+                ),
+                color=discord.Color.gold(),
+                timestamp=datetime.now(),
+            )
+            embed.set_thumbnail(url=self.pracownik.display_avatar.url)
+            embed.add_field(
+                name="👤 Zwolniony",
+                value=f"{self.pracownik.mention}\n`ID: {self.pracownik.id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="👑 Zarząd",
+                value=f"{interaction.user.mention}",
+                inline=True,
+            )
+            embed.add_field(
+                name="📅 Data", value=f"`{data_tekst}`", inline=True
+            )
+            embed.add_field(
+                name="📝 Powód", value=f"```text\n{powod_tekst}\n```", inline=False
+            )
+            embed.add_field(
+                name="📊 Status", value="**Zwolniony z szeregów**", inline=False
+            )
+            embed.set_footer(
+                text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+                icon_url=(
+                    interaction.guild.icon.url
+                    if interaction.guild.icon
+                    else None
+                ),
+            )
+
+            log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+            if log_channel:
+                await log_channel.send(
+                    content=f"{self.pracownik.mention}", embed=embed
+                )
+
+            await update_employee_list(interaction.guild)
+            return await interaction.response.send_message(
+                f"✅ Pomyślnie zwolniono pracownika {self.pracownik.mention}.",
+                ephemeral=True,
+            )
+
         current_index = get_current_grade_index(self.pracownik)
 
         if current_index == -1:
@@ -1818,50 +1907,73 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
         return await interaction.response.send_message(
             "❌ Brak uprawnień!", ephemeral=True
         )
+    await interaction.response.send_modal(PowodHRModal("zwolnienie", pracownik))
 
-    roles_to_remove = [
-        r for r in pracownik.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
-    ]
-    try:
-        if roles_to_remove:
-            await pracownik.remove_roles(*roles_to_remove)
-    except discord.Forbidden:
+
+@zarzad_group.command(
+    name="zwolnienie_nieoplaconych",
+    description="Zwalnia automatycznie wszystkie osoby z X na opłatach",
+)
+async def zwolnienie_nieoplaconych(interaction: Interaction):
+    if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
-            "⚠️ Brak uprawnień bota!", ephemeral=True
+            "❌ Brak uprawnień!", ephemeral=True
         )
 
-    embed = discord.Embed(
-        title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
-        description=f"Pracownik {pracownik.mention} został zwolniony z komisu.",
-        color=discord.Color.gold(),
-        timestamp=datetime.now(),
-    )
-    embed.set_thumbnail(url=pracownik.display_avatar.url)
-    embed.add_field(
-        name="👤 Zwolniony",
-        value=f"{pracownik.mention}\n`ID: {pracownik.id}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="👑 Zarząd", value=f"{interaction.user.mention}", inline=True
-    )
-    embed.add_field(
-        name="📊 Status", value="**Zwolniony z szeregów**", inline=False
-    )
-    embed.set_footer(
-        text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
-        icon_url=(
-            interaction.guild.icon.url if interaction.guild.icon else None
-        ),
-    )
+    guild = interaction.guild
+    fees_channel = guild.get_channel(FEES_CHANNEL_ID)
+    if not fees_channel:
+        return await interaction.response.send_message(
+            "❌ Nie znaleziono kanału opłat!", ephemeral=True
+        )
 
-    log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
-    if log_channel:
-        await log_channel.send(content=f"{pracownik.mention}", embed=embed)
+    target_message = None
+    target_embed = None
+    async for message in fees_channel.history(limit=10):
+        if (
+            message.author == guild.me
+            id message.embeds
+            and "OPŁATY TYGODNIOWE" in message.embeds[0].title
+        ):
+            target_message = message
+            target_embed = message.embeds[0]
+            break
 
-    await update_employee_list(interaction.guild)
-    await interaction.response.send_message(
-        f"✅ Zwolniono pracownika {pracownik.mention}.", ephemeral=True
+    if not target_message or not target_embed:
+        return await interaction.response.send_message(
+            "❌ Nie znaleziono aktywnego panelu opłat!", ephemeral=True
+        )
+
+    await interaction.response.defer(ephemeral=True)
+
+    content = target_embed.description
+    lines = content.split("\n")
+    zទទួលបាន = 0
+    obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
+
+    for line in lines:
+        if "❌" in line:
+            for word in line.split():
+                if word.startswith("<@") and word.endswith(">"):
+                    try:
+                        uid = int(word.strip("<@!>"))
+                        member = guild.get_member(uid)
+                        if member and is_pracownik(member) and not is_zarzad(member):
+                            roles_to_remove = [
+                                r for r in member.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+                            ]
+                            if roles_to_remove:
+                                await member.remove_roles(*roles_to_remove)
+                            if obywatel_role and obywatel_role not in member.roles:
+                                await member.add_roles(obywatel_role)
+                            zpolczonych += 1
+                    except Exception as e:
+                        print(f"Błąd przy masowym zwalnianiu ID {uid}: {e}")
+
+    await update_employee_list(guild)
+    await interaction.followup.send(
+        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Łącznie przetworzono: **{zpolczonych}** osób.",
+        ephemeral=True,
     )
 
 
