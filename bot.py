@@ -1932,7 +1932,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
     async for message in fees_channel.history(limit=10):
         if (
             message.author == guild.me
-            id message.embeds
+            and message.embeds
             and "OPŁATY TYGODNIOWE" in message.embeds[0].title
         ):
             target_message = message
@@ -1948,7 +1948,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
 
     content = target_embed.description
     lines = content.split("\n")
-    zទទួលបាន = 0
+    zszokowanych = 0
     obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
 
     for line in lines:
@@ -1966,13 +1966,13 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                                 await member.remove_roles(*roles_to_remove)
                             if obywatel_role and obywatel_role not in member.roles:
                                 await member.add_roles(obywatel_role)
-                            zpolczonych += 1
+                            zszokowanych += 1
                     except Exception as e:
                         print(f"Błąd przy masowym zwalnianiu ID {uid}: {e}")
 
     await update_employee_list(guild)
     await interaction.followup.send(
-        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Łącznie przetworzono: **{zpolczonych}** osób.",
+        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Łącznie przetworzono: **{zszokowanych}** osób.",
         ephemeral=True,
     )
 
