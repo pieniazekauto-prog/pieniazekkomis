@@ -1222,11 +1222,12 @@ class PowodHRModal(Modal):
             data_tekst = self.data_input.value
             guild = interaction.guild
             obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
+            zla_rola_id = 1503009723543191782
 
             roles_to_remove = [
                 r
                 for r in self.pracownik.roles
-                if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+                if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID or r.id == zla_rola_id
             ]
             try:
                 if roles_to_remove:
@@ -1244,7 +1245,7 @@ class PowodHRModal(Modal):
                     f"Pracownik {self.pracownik.mention} został zwolniony z"
                     " komisu."
                 ),
-                color=discord.Color.gold(),
+                color=discord.Color.red(),
                 timestamp=datetime.now(),
             )
             embed.set_thumbnail(url=self.pracownik.display_avatar.url)
@@ -1322,7 +1323,7 @@ class PowodHRModal(Modal):
                     f"Pracownik {self.pracownik.mention} awansował w hierarchii"
                     " komisu."
                 ),
-                color=discord.Color.gold(),
+                color=discord.Color.green(),
                 timestamp=datetime.now(),
             )
             embed.set_thumbnail(url=self.pracownik.display_avatar.url)
@@ -1393,7 +1394,7 @@ class PowodHRModal(Modal):
                 description=(
                     f"Pracownik {self.pracownik.mention} został zdegradowany."
                 ),
-                color=discord.Color.gold(),
+                color=discord.Color.orange(),
                 timestamp=datetime.now(),
             )
             embed.set_thumbnail(url=self.pracownik.display_avatar.url)
@@ -1843,7 +1844,7 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     embed = discord.Embed(
         title="✦ PIENIĄŻEK AUTO | ZATRUDNIENIE W KADRZE",
         description=f"Pracownik {pracownik.mention} został oficjalnie zatrudniony!",
-        color=discord.Color.gold(),
+        color=discord.Color.green(),
         timestamp=datetime.now(),
     )
     embed.set_thumbnail(url=pracownik.display_avatar.url)
@@ -1950,6 +1951,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
     lines = content.split("\n")
     zszokowanych = 0
     obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
+    zla_rola_id = 1503009723543191782
 
     for line in lines:
         if "❌" in line:
@@ -1960,7 +1962,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                         member = guild.get_member(uid)
                         if member and is_pracownik(member) and not is_zarzad(member):
                             roles_to_remove = [
-                                r for r in member.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID
+                                r for r in member.roles if r.id in GRADES or r.id == PRACOWNIK_ROLE_ID or r.id == zla_rola_id
                             ]
                             if roles_to_remove:
                                 await member.remove_roles(*roles_to_remove)
