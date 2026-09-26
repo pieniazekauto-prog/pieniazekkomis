@@ -2173,7 +2173,7 @@ async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
     embed.add_field(name="📅 Data Zatrudnienia", value=f"`{hire_date}`", inline=True)
     embed.add_field(name="🪙 Stan Tokenów", value=f"**{tokens}**", inline=True)
     embed.add_field(name="💰 Łączny utarg", value=f"```css\n[{sales_total:,} USD]\n```", inline=False)
-    embed.add_field(name="⚠️ Ostrzeżenia", value=`{warns_count}`, inline=True)
+    embed.add_field(name="⚠️ Ostrzeżenia", value=f"{warns_count}", inline=True)
     embed.add_field(name="🏖️ Status LOA", value="`Tak`" if is_on_loa(uzytkownik.id) else "`Nie`", inline=True)
 
     if history:
