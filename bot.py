@@ -285,14 +285,6 @@ async def process_warn_penalties(guild: discord.Guild, pracownik: discord.Member
 
     elif warn_count >= 5:
         log_hr_history(pracownik.id, "auto_zwolnienie_req", f"Przekroczono 5 warnów ({reason})")
-        
-        embed = discord.Embed(
-            title="🚨 WNIOSEK O ZWOLNIENIE DYSCYPLINARNE (5 WARNÓW)",
-            description=f"Pracownik {pracownik.mention} osiągnął **{warn_count} WARNÓW**. Wymagana natychmiastowa interwencja Zarządu w celu dyscyplinarnego usunięcia z kadry!",
-            color=discord.Color.dark_red(),
-            timestamp=datetime.now()
-        )
-        # Możesz wysłać to do wybranego kanału lub po prostu do interakcji, tutaj wysyłamy na kanał ogólny/komend lub gdzie trzeba, brak dedykowanego loga warnów.
 
 # ==============================================================================
 # SYSTEM LISTY TOKENÓW (AUTOMATYCZNA SYNCHRONIZACJA)
@@ -380,7 +372,7 @@ class UstawDaneModal(Modal, title="Ustaw dane IC"):
 
 
 # ==============================================================================
-# SYSTEM WYMIANY TOKENÓW (CENNIK ZE SCREENA)
+# SYSTEM WYMIANY TOKENÓW
 # ==============================================================================
 class WymianaSelect(Select):
 
@@ -588,7 +580,7 @@ class WymianaView(View):
 
 
 # ==============================================================================
-# SYSTEM WERYFIKACJI I WIDOKI GŁÓWNE (Z PINGIEM ZARZĄDU W TICKETACH)
+# SYSTEM WERYFIKACJI I WIDOKI GŁÓWNE
 # ==============================================================================
 class VerificationView(View):
     def __init__(self):
@@ -709,7 +701,6 @@ class WelcomeTicketView(View):
 
         close_view = TicketCloseView()
 
-        # Powiadomienie Zarządu
         await ticket_channel.send(content=f"🔔 <@&{ZARZAD_ROLE_ID}> | Nowe zgłoszenie od {interaction.user.mention}")
 
         if mode == "podanie":
@@ -1270,7 +1261,7 @@ class PodanieZarzadView(View):
         info_text = (
             f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
             f"Gratulacje {self.applicant.mention}! Twoje podanie zostało zaakceptowane. "
-            f"Zapoznaj się z dostępnymi informacjami ponizej , a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
+            f"Zapoznaj się z dostępnymi informacjami poniżej, a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
             f"# 📞 Radio Komisu: 541\n"
             f"## 🔒 Hasło: 2505\n\n"
             f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
@@ -1512,7 +1503,7 @@ class PowodHRModal(Modal):
                 return await interaction.response.send_message(
                     "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
                 )
-                
+            
             log_hr_history(self.pracownik.id, "degradacja", f"Degradacja na {new_role.name}. Powód: {powod_tekst}")
 
             embed = discord.Embed(
@@ -1739,7 +1730,7 @@ async def on_ready():
 
 
 # ==============================================================================
-# AUTOMATYCZNE SYNCHRONIZACJE (LISTA PRACOWNIKÓW I OPŁATY PO ZMIANIE RÓL)
+# AUTOMATYCZNE SYNCHRONIZACJE
 # ==============================================================================
 @client.event
 async def on_member_update(before: discord.Member, after: discord.Member):
@@ -1789,13 +1780,13 @@ async def on_member_join(member: discord.Member):
 
 
 # ==============================================================================
-# KOMENDY SLASH – PODZIAŁ NA SEKCJE (GRUPY)
+# KOMENDY SLASH – PODZIAŁ NA SEKCJE (Z PROFESJONALNYM OPISAMI)
 # ==============================================================================
 
 # SEKCJA: WARNY
 warn_group = app_commands.Group(name="warn", description="⚠️ [Sekcja Ostrzeżeń] Ostrzeżenia i kary dyscyplinarne")
 
-@warn_group.command(name="dodaj", description="Dodaje ostrzeżenie pracownikowi (Auto-degradacja przy 3 warnach)")
+@warn_group.command(name="dodaj", description="[Zarząd] Nałożenie oficjalnego ostrzeżenia dyscyplinarnego na członka kadry")
 @app_commands.describe(pracownik="Wybrany pracownik", powod="Powód ostrzeżenia")
 async def warn_dodaj(interaction: Interaction, pracownik: discord.Member, powod: str):
     if not is_zarzad(interaction.user):
@@ -1834,7 +1825,7 @@ async def warn_dodaj(interaction: Interaction, pracownik: discord.Member, powod:
     await interaction.response.send_message(content=pracownik.mention, embed=embed)
     await process_warn_penalties(interaction.guild, pracownik, len(warns_list), powod)
 
-@warn_group.command(name="usun", description="Usuwa konkretne ostrzeżenie pracownika")
+@warn_group.command(name="usun", description="[Zarząd] Usunięcie wybranego ostrzeżenia z kartoteki pracownika")
 @app_commands.describe(pracownik="Pracownik", warn_id="ID Ostrzeżenia")
 async def warn_usun(interaction: Interaction, pracownik: discord.Member, warn_id: int):
     if not is_zarzad(interaction.user):
@@ -1855,7 +1846,7 @@ async def warn_usun(interaction: Interaction, pracownik: discord.Member, warn_id
     
     await interaction.response.send_message(f"✅ Usunięto ostrzeżenie #{warn_id} użytkownika {pracownik.mention}.", ephemeral=True)
 
-@warn_group.command(name="lista", description="Wyświetla listę ostrzeżeń pracownika")
+@warn_group.command(name="lista", description="[Kadra] Wyświetlenie pełnej kartoteki ostrzeżeń pracownika")
 async def warn_lista(interaction: Interaction, pracownik: discord.Member):
     doc = warns_collection.find_one({"user_id": str(pracownik.id)})
     warns_list = doc.get("warns", []) if doc else []
@@ -1873,7 +1864,7 @@ client.tree.add_command(warn_group)
 # SEKCJA: MAGAZYN
 magazyn_group = app_commands.Group(name="magazyn", description="🚗 [Sekcja Magazynu] Pojazdy na placu")
 
-@magazyn_group.command(name="dodaj", description="Dodaje pojazd na stan komisu")
+@magazyn_group.command(name="dodaj", description="[Pracownik] Rejestracja nowego pojazdu na stanie komisu")
 @app_commands.describe(nazwa="Nazwa pojazdu (np. BMW M3 G80)", cena="Cena pojazdu")
 async def mag_dodaj(interaction: Interaction, nazwa: str, cena: str):
     if not is_pracownik(interaction.user): return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -1881,7 +1872,7 @@ async def mag_dodaj(interaction: Interaction, nazwa: str, cena: str):
     vehicles_collection.insert_one({"nazwa": nazwa, "cena": cena, "added_by": str(interaction.user.id), "date": datetime.now().strftime("%d.%m.%Y")})
     await interaction.response.send_message(f"✅ Dodano pojazd **{nazwa}** (Cena: {cena}) na stan komisu.")
 
-@magazyn_group.command(name="usun", description="Usuwa pojazd ze stanu (podaj pełną nazwę)")
+@magazyn_group.command(name="usun", description="[Pracownik] Usunięcie pojazdu z ewidencji magazynowej")
 async def mag_usun(interaction: Interaction, nazwa: str):
     if not is_pracownik(interaction.user): return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
     
@@ -1891,7 +1882,7 @@ async def mag_usun(interaction: Interaction, nazwa: str):
     else:
         await interaction.response.send_message(f"❌ Nie znaleziono pojazdu **{nazwa}** na stanie.", ephemeral=True)
 
-@magazyn_group.command(name="pokaz", description="Wyświetla aktualny stan magazynowy")
+@magazyn_group.command(name="pokaz", description="[Ogólne] Podgląd aktualnego stanu floty pojazdów w komisie")
 async def mag_pokaz(interaction: Interaction):
     pojazdy = list(vehicles_collection.find())
     if not pojazdy:
@@ -1910,7 +1901,7 @@ token_group = app_commands.Group(
 )
 
 @token_group.command(
-    name="dodaj", description="Dodaje tokeny wybranemu użytkownikowi (Zarząd)"
+    name="dodaj", description="[HR] Przyznanie puli tokenów pracowniczych do systemu rozliczeniowego"
 )
 @app_commands.describe(
     uzytkownik="Użytkownik, któremu chcesz dodać tokeny",
@@ -1971,7 +1962,7 @@ async def token_dodaj(
     )
 
 @token_group.command(
-    name="odejmij", description="Odejmuje tokeny wybranemu użytkownikowi (Zarząd)"
+    name="odejmij", description="[HR] Odliczenie tokenów z bilansu pracownika"
 )
 @app_commands.describe(
     uzytkownik="Użytkownik, któremu chcesz odjąć tokeny",
@@ -2032,7 +2023,7 @@ async def token_odejmij(
     )
 
 @token_group.command(
-    name="status", description="Sprawdź stan swoich zgromadzonych tokenów"
+    name="status", description="[Pracownik] Sprawdzenie indywidualnego stanu zgromadzonych tokenów"
 )
 async def token_status(interaction: Interaction):
     if not is_pracownik(interaction.user):
@@ -2056,7 +2047,7 @@ async def token_status(interaction: Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @token_group.command(
-    name="zarzad", description="Sprawdź stan tokenów wybranego użytkownika (Zarząd)"
+    name="zarzad", description="[HR] Weryfikacja salda tokenów wybranego członka kadry"
 )
 @app_commands.describe(uzytkownik="Wybrany pracownik")
 async def token_zarzad(interaction: Interaction, uzytkownik: discord.Member):
@@ -2089,7 +2080,7 @@ zarzad_group = app_commands.Group(
 )
 
 @zarzad_group.command(
-    name="zatrudnij", description="Zatrudnia pracownika i nadaje role"
+    name="zatrudnij", description="[Zarząd] Oficjalne zatrudnienie kandydata w strukturach komisu"
 )
 @app_commands.describe(pracownik="Wybrany użytkownik do zatrudnienia")
 async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
@@ -2112,7 +2103,7 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
             "⚠️ Bot nie posiada uprawnień do nadania ról temu użytkownikowi!",
             ephemeral=True,
         )
-        
+    
     log_hr_history(pracownik.id, "zatrudnienie", f"Zatrudniony przez {interaction.user.display_name}")
 
     embed = discord.Embed(
@@ -2142,7 +2133,7 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     info_text = (
         f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
         f"Gratulacje {pracownik.mention}! Zostałeś zatrudniony. "
-        f"Zapoznaj się z dostępnymi informacjami ponizej , a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
+        f"Zapoznaj się z dostępnymi informacjami poniżej, a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
         f"# 📞 Radio Komisu: 541\n"
         f"## 🔒 Hasło: 2505\n\n"
         f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
@@ -2157,7 +2148,7 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         ephemeral=True,
     )
 
-@zarzad_group.command(name="kartoteka", description="Pobiera pełną kartotekę HR pracownika")
+@zarzad_group.command(name="kartoteka", description="[Zarząd] Wyświetlenie kompletnej kartoteki personalnej i historii HR")
 @app_commands.describe(uzytkownik="Wybrany pracownik")
 async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -2182,7 +2173,7 @@ async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
     embed.add_field(name="📅 Data Zatrudnienia", value=f"`{hire_date}`", inline=True)
     embed.add_field(name="🪙 Stan Tokenów", value=f"**{tokens}**", inline=True)
     embed.add_field(name="💰 Łączny utarg", value=f"```css\n[{sales_total:,} USD]\n```", inline=False)
-    embed.add_field(name="⚠️ Ostrzeżenia", value=f"`{warns_count}`", inline=True)
+    embed.add_field(name="⚠️ Ostrzeżenia", value=`{warns_count}`, inline=True)
     embed.add_field(name="🏖️ Status LOA", value="`Tak`" if is_on_loa(uzytkownik.id) else "`Nie`", inline=True)
 
     if history:
@@ -2192,7 +2183,7 @@ async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @zarzad_group.command(
-    name="awans", description="Awansuj pracownika na wyższą rangę"
+    name="awans", description="[Zarząd] Awansowanie pracownika na wyższy stopień hierarchii"
 )
 @app_commands.describe(pracownik="Pracownik do awansu")
 async def awans(interaction: Interaction, pracownik: discord.Member):
@@ -2204,7 +2195,7 @@ async def awans(interaction: Interaction, pracownik: discord.Member):
 
 
 @zarzad_group.command(
-    name="degrad", description="Zdegraduj pracownika na niższą rangę"
+    name="degrad", description="[Zarząd] Degradacja pracownika na niższy stopień"
 )
 @app_commands.describe(pracownik="Pracownik do degradacji")
 async def degrad(interaction: Interaction, pracownik: discord.Member):
@@ -2215,7 +2206,7 @@ async def degrad(interaction: Interaction, pracownik: discord.Member):
     await interaction.response.send_modal(PowodHRModal("degrad", pracownik))
 
 
-@zarzad_group.command(name="zwolnienie", description="Zwolnij pracownika z komisu")
+@zarzad_group.command(name="zwolnienie", description="[Zarząd] Dyscyplinarne zwolnienie pracownika z komisu")
 @app_commands.describe(pracownik="Pracownik do zwolnienia")
 async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
@@ -2227,7 +2218,7 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
 
 @zarzad_group.command(
     name="zwolnienie_nieoplaconych",
-    description="Zwalnia automatycznie wszystkie osoby z X na opłatach (pomija LOA)",
+    description="[Zarząd] Masowe zwolnienie personelu zalegającego ze składkami",
 )
 async def zwolnienie_nieoplaconych(interaction: Interaction):
     if not is_zarzad(interaction.user):
@@ -2297,7 +2288,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
         ephemeral=True,
     )
 
-@zarzad_group.command(name="przypomnij_oplaty", description="Wymusza ręczne przypomnienie o opłatach na kanale")
+@zarzad_group.command(name="przypomnij_oplaty", description="[Zarząd] Wysłanie powiadomienia do dłużników składek tygodniowych")
 async def przypomnij_oplaty(interaction: Interaction):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -2334,7 +2325,7 @@ async def przypomnij_oplaty(interaction: Interaction):
         await interaction.response.send_message("✅ Wszyscy pracownicy mają opłacone składki lub są na urlopach.", ephemeral=True)
 
 @zarzad_group.command(
-    name="mandat", description="Wystaw oficjalny mandat dyscyplinarny"
+    name="mandat", description="[Zarząd] Nałożenie oficjalnego mandatu finansowego/porządkowego"
 )
 @app_commands.describe(pracownik="Pracownik, któremu wystawiasz mandat")
 async def mandat(interaction: Interaction, pracownik: discord.Member):
@@ -2352,12 +2343,40 @@ async def mandat(interaction: Interaction, pracownik: discord.Member):
 client.tree.add_command(zarzad_group)
 
 
-# POZOSTAŁE KOMENDY GLOBALNE
-@client.tree.command(name="urlop", description="Złóż wniosek o urlop (LOA)")
+# ==============================================================================
+# POZOSTAŁE KOMENDY GLOBALNE (W TYM NOWA /purlop)
+# ==============================================================================
+@client.tree.command(name="urlop", description="[Pracownik] Złożenie oficjalnego wniosku o urlop (LOA)")
 async def urlop_cmd(interaction: Interaction):
     if not is_pracownik(interaction.user):
         return await interaction.response.send_message("❌ Komenda dostępna tylko dla pracowników!", ephemeral=True)
     await interaction.response.send_modal(UrlopModal())
+
+@client.tree.command(name="purlop", description="[Pracownik/Zarząd] Wyświetlenie instrukcji oraz poradnika urlopowego (LOA)")
+async def purlop_cmd(interaction: Interaction):
+    if not is_pracownik(interaction.user):
+        return await interaction.response.send_message("❌ Komenda dostępna tylko dla pracowników!", ephemeral=True)
+
+    embed = discord.Embed(
+        title="🏖️ PORADNIK URLOPOWY (LOA) | PIENIĄŻEK AUTO",
+        description=(
+            "Planujesz dłuższą nieobecność? Sprawdź, jak prawidłowo zgłosić urlop i jakie zasady panują w naszej firmie:\n\n"
+            "**1. Jak złożyć wniosek?**\n"
+            "• Użyj komendy `/urlop`, aby otworzyć oficjalny formularz w postaci okna modalnego.\n"
+            "• Wpisz planowaną datę rozpoczęcia oraz zakończenia (np. `26.09.2026` do `02.10.2026`).\n"
+            "• Opisz krótko powód swojej nieobecności.\n\n"
+            "**2. Co daje status urlopowy (LOA)?**\n"
+            "• Otrzymujesz specjalną rangę urlopową, która automatycznie informuje Zarząd o Twojej nieobecności.\n"
+            "• **Zostajesz zwolniony z obowiązku opłacania składek tygodniowych** na czas trwania urlopu!\n"
+            "• System automatycznie pomija Cię podczas masowego rozliczania opłat.\n\n"
+            "**3. Zakończenie urlopu**\n"
+            "• Po powrocie możesz w każdej chwili zakończyć urlop za pomocą dedykowanego przycisku pod wiadomością potwierdzającą."
+        ),
+        color=discord.Color.blue(),
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text="© Pieniążek Auto OSLORP | System Urlopowy")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @client.tree.command(name="ranking_sprzedazy", description="Pokazuje podium pracowników z największym utargiem w miesiącu")
 async def ranking_sprzedazy(interaction: Interaction):
