@@ -4,6 +4,7 @@ import os
 import threading
 import certifi
 import discord
+import re
 from discord import ButtonStyle, Interaction, app_commands
 from discord.ext import commands, tasks
 from discord.ui import Button, Modal, Select, TextInput, View, button
@@ -15,16 +16,13 @@ from pymongo import MongoClient
 # ==============================================================================
 app = Flask(__name__)
 
-
 @app.route("/")
 def home():
     return "Pieniążek Auto Bot jest online 24/7!"
 
-
 def run_flask():
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
 
 # ==============================================================================
 # BAZA DANYCH (MONGODB ATLAS W CHMURZE)
@@ -32,8 +30,13 @@ def run_flask():
 MONGO_URI = os.getenv("MONGO_URI")
 mongo_client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = mongo_client["pieniazek_auto_db"]
-tokens_collection = db["tokens"]
 
+tokens_collection = db["tokens"]
+employees_collection = db["employees"]
+warns_collection = db["warns"]
+loa_collection = db["loa"]
+sales_collection = db["sales"]
+vehicles_collection = db["vehicles"]
 
 def load_data():
     """Pobiera wszystkie dane tokenów z chmury MongoDB do słownika."""
@@ -41,7 +44,6 @@ def load_data():
     for doc in tokens_collection.find():
         data[str(doc["user_id"])] = doc["tokens"]
     return data
-
 
 def save_data(data):
     """Zapisuje cały słownik z powrotem do bazy w chmurze (upsert dla każdego)."""
@@ -52,13 +54,11 @@ def save_data(data):
             upsert=True,
         )
 
-
 def get_user_tokens(user_id):
     doc = tokens_collection.find_one({"user_id": str(user_id)})
     if doc:
         return doc.get("tokens", 0)
     return 0
-
 
 def remove_user_tokens(user_id, amount):
     current = get_user_tokens(user_id)
@@ -66,7 +66,7 @@ def remove_user_tokens(user_id, amount):
     tokens_collection.update_one(
         {"user_id": str(user_id)}, {"$set": {"tokens": new_amount}}, upsert=True
     )
-
+    log_hr_history(user_id, "token_remove", f"Odjęto {amount} tokenów (Pozostało: {new_amount})")
 
 def add_user_tokens(user_id, amount):
     current = get_user_tokens(user_id)
@@ -74,7 +74,53 @@ def add_user_tokens(user_id, amount):
     tokens_collection.update_one(
         {"user_id": str(user_id)}, {"$set": {"tokens": new_amount}}, upsert=True
     )
+    log_hr_history(user_id, "token_add", f"Dodano {amount} tokenów (Łącznie: {new_amount})")
 
+def is_on_loa(user_id):
+    doc = loa_collection.find_one({"user_id": str(user_id), "active": True})
+    return doc is not None
+
+def log_hr_history(user_id, event_type, details):
+    doc = employees_collection.find_one({"user_id": str(user_id)})
+    if not doc:
+        doc = {
+            "user_id": str(user_id),
+            "hire_date": datetime.now().strftime("%d.%m.%Y"),
+            "sales_total": 0,
+            "history": [],
+        }
+    doc["history"].append({
+        "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "type": event_type,
+        "details": details,
+    })
+    employees_collection.update_one({"user_id": str(user_id)}, {"$set": doc}, upsert=True)
+
+def add_sales_record(user_id, amount):
+    now = datetime.now()
+    month_key = now.strftime("%Y-%m")
+    
+    sales_collection.insert_one({
+        "user_id": str(user_id),
+        "amount": amount,
+        "month": month_key,
+        "date": now
+    })
+    
+    doc = employees_collection.find_one({"user_id": str(user_id)})
+    if not doc:
+        employees_collection.update_one(
+            {"user_id": str(user_id)},
+            {"$set": {"user_id": str(user_id), "hire_date": now.strftime("%d.%m.%Y"), "sales_total": amount, "history": []}},
+            upsert=True,
+        )
+    else:
+        current = doc.get("sales_total", 0)
+        employees_collection.update_one(
+            {"user_id": str(user_id)},
+            {"$set": {"sales_total": current + amount}},
+            upsert=True,
+        )
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
@@ -85,6 +131,7 @@ GUILD_ID = 1503007115956977706  # ID Twojego serwera
 # ROLOWE UPRAWNIENIA
 ZARZAD_ROLE_ID = 1503151943688654958  # ID Roli Zarządu
 PRACOWNIK_ROLE_ID = 1503009366985408553  # ID Roli Pracownika / Obywatela (Weryfikacji)
+URLOP_ROLE_ID = 1553466322757755001
 
 # DOKŁADNE ID RÓL
 OWNER_ROLE_ID = 1503010247130746983
@@ -110,16 +157,21 @@ GRADES = [
 ]
 
 WELCOME_CHANNEL_ID = 1503013291197202432
-AWANS_LOG_CHANNEL_ID = 1503394099661639680
 EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
 TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
 TOKEN_LIST_CHANNEL_ID = 1548103462368321646  # Nowe ID kanału listy tokenów
 
+# NOWE KANAŁY LOGÓW
+LOG_URLOPY_CHANNEL_ID = 1553465440200564826
+LOG_WARNY_CHANNEL_ID = 1553465538200608848
+AWANS_LOG_CHANNEL_ID = 1553465625790259290
+LOG_ZWOLNIENIA_CHANNEL_ID = 1553465683042500730
+LOG_KOMENDY_CHANNEL_ID = 1553465717251383317
+
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
 )
-
 
 # ==============================================================================
 # HELPER FUNCTIONS
@@ -129,12 +181,10 @@ def is_zarzad(user: discord.Member) -> bool:
         role.id == ZARZAD_ROLE_ID for role in user.roles
     ) or user.guild_permissions.administrator
 
-
 def is_pracownik(user: discord.Member) -> bool:
     return any(
         role.id == PRACOWNIK_ROLE_ID for role in user.roles
     ) or is_zarzad(user)
-
 
 def get_current_grade_index(member: discord.Member) -> int:
     highest_index = -1
@@ -143,6 +193,142 @@ def get_current_grade_index(member: discord.Member) -> int:
             highest_index = i
     return highest_index
 
+# ==============================================================================
+# SYSTEM URLOPOWY (Z PRZYCISKIEM ZAKOŃCZENIA)
+# ==============================================================================
+class EndLoaView(View):
+    def __init__(self, user_id: int):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+
+    @button(label="🏖️ Zakończ Urlop", style=ButtonStyle.danger, custom_id="end_loa_btn")
+    async def end_loa(self, interaction: Interaction, button: Button):
+        if interaction.user.id != self.user_id and not is_zarzad(interaction.user):
+            return await interaction.response.send_message("❌ Tylko właściciel urlopu lub Zarząd może go zakończyć!", ephemeral=True)
+
+        guild = interaction.guild
+        urlop_role = guild.get_role(URLOP_ROLE_ID)
+        member = guild.get_member(self.user_id)
+
+        if member and urlop_role and urlop_role in member.roles:
+            try:
+                await member.remove_roles(urlop_role)
+            except discord.Forbidden:
+                pass
+
+        loa_collection.update_one(
+            {"user_id": str(self.user_id), "active": True},
+            {"$set": {"active": False, "ended_at": datetime.now().strftime("%d.%m.%Y %H:%M")}}
+        )
+
+        log_hr_history(self.user_id, "urlop_end", "Zakończenie urlopu")
+        await sync_fees_embed_on_role_change(guild)
+
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.red()
+        embed.add_field(name="🏁 Status LOA", value=f"❌ **Zakończony przez {interaction.user.mention}**", inline=False)
+        
+        button.disabled = True
+        await interaction.response.edit_message(embed=embed, view=self)
+
+        log_channel = guild.get_channel(LOG_URLOPY_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="🏖️ POWRÓT Z URLOPU",
+                description=f"Pracownik <@{self.user_id}> powrócił z urlopu i wznowił obowiązki.",
+                color=discord.Color.green(),
+                timestamp=datetime.now()
+            )
+            await log_channel.send(embed=log_embed)
+
+class UrlopModal(Modal, title="🏖️ Wniosek o Urlop (LOA)"):
+    od_data = TextInput(label="Data rozpoczęcia", placeholder="np. 26.09.2026", required=True)
+    do_data = TextInput(label="Data zakończenia", placeholder="np. 02.10.2026", required=True)
+    powod = TextInput(label="Powód urlopu", style=discord.TextStyle.paragraph, required=True, max_length=500)
+
+    async def on_submit(self, interaction: Interaction):
+        guild = interaction.guild
+        urlop_role = guild.get_role(URLOP_ROLE_ID)
+
+        if urlop_role:
+            try:
+                await interaction.user.add_roles(urlop_role)
+            except discord.Forbidden:
+                pass
+
+        loa_collection.update_one(
+            {"user_id": str(interaction.user.id)},
+            {"$set": {
+                "user_id": str(interaction.user.id),
+                "od": self.od_data.value,
+                "do": self.do_data.value,
+                "powod": self.powod.value,
+                "active": True
+            }},
+            upsert=True
+        )
+
+        log_hr_history(interaction.user.id, "urlop", f"Urlop od {self.od_data.value} do {self.do_data.value}")
+        await sync_fees_embed_on_role_change(guild)
+
+        embed = discord.Embed(
+            title="🏖️ WNIOSEK URLOPOWY (LOA)",
+            description=f"Pracownik {interaction.user.mention} zgłosił urlop.",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        embed.add_field(name="📅 Okres", value=f"`{self.od_data.value}` ➔ `{self.do_data.value}`", inline=False)
+        embed.add_field(name="📝 Powód", value=f"```text\n{self.powod.value}\n```", inline=False)
+        embed.set_footer(text="Użyj przycisku poniżej, aby zakończyć urlop w dowolnym momencie.")
+
+        view = EndLoaView(interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view)
+
+        log_channel = guild.get_channel(LOG_URLOPY_CHANNEL_ID)
+        if log_channel:
+            await log_channel.send(embed=embed)
+
+# ==============================================================================
+# PROGI OSTRZEŻEŃ (AUTO-DEGRADACJA I ZWOLNIENIE DYSCYPLINARNE)
+# ==============================================================================
+async def process_warn_penalties(guild: discord.Guild, pracownik: discord.Member, warn_count: int, reason: str):
+    log_warn_channel = guild.get_channel(LOG_WARNY_CHANNEL_ID)
+    log_degrad_channel = guild.get_channel(AWANS_LOG_CHANNEL_ID)
+    log_zwolnienia_channel = guild.get_channel(LOG_ZWOLNIENIA_CHANNEL_ID)
+
+    if warn_count == 3:
+        current_index = get_current_grade_index(pracownik)
+        if current_index > 0:
+            old_role = guild.get_role(GRADES[current_index])
+            new_role = guild.get_role(GRADES[current_index - 1])
+            if old_role:
+                await pracownik.remove_roles(old_role)
+            if new_role:
+                await pracownik.add_roles(new_role)
+            
+            log_hr_history(pracownik.id, "auto_degrad", f"Automatyczna degradacja za 3 warny (Powód: {reason})")
+            
+            embed = discord.Embed(
+                title="⚠️ AUTOMATYCZNA DEGRADACJA (3 WARNY)",
+                description=f"Pracownik {pracownik.mention} przekroczył limit 3 ostrzeżeń i został automatycznie zdegradowany.",
+                color=discord.Color.orange(),
+                timestamp=datetime.now()
+            )
+            embed.add_field(name="📉 Nowa Ranga", value=f"**{new_role.name if new_role else 'Niższa'}**", inline=True)
+            if log_degrad_channel:
+                await log_degrad_channel.send(content=pracownik.mention, embed=embed)
+
+    elif warn_count >= 5:
+        log_hr_history(pracownik.id, "auto_zwolnienie_req", f"Przekroczono 5 warnów ({reason})")
+        
+        embed = discord.Embed(
+            title="🚨 WNIOSEK O ZWOLNIENIE DYSCYPLINARNE (5 WARNÓW)",
+            description=f"Pracownik {pracownik.mention} osiągnął **{warn_count} WARNÓW**. Wymagana natychmiastowa interwencja Zarządu w celu dyscyplinarnego usunięcia z kadry!",
+            color=discord.Color.dark_red(),
+            timestamp=datetime.now()
+        )
+        if log_zwolnienia_channel:
+            await log_zwolnienia_channel.send(content=f"<@&{ZARZAD_ROLE_ID}> {pracownik.mention}", embed=embed)
 
 # ==============================================================================
 # SYSTEM LISTY TOKENÓW (AUTOMATYCZNA SYNCHRONIZACJA)
@@ -431,7 +617,6 @@ class WymianaSelect(Select):
 
 
 class WymianaView(View):
-
     def __init__(self, author_id: int, target_user: discord.Member):
         super().__init__(timeout=60)
         self.author_id = author_id
@@ -439,10 +624,9 @@ class WymianaView(View):
 
 
 # ==============================================================================
-# SYSTEM WERYFIKACJI I WIDOKI GŁÓWNE
+# SYSTEM WERYFIKACJI I WIDOKI GŁÓWNE (Z PINGIEM ZARZĄDU W TICKETACH)
 # ==============================================================================
 class VerificationView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -481,7 +665,6 @@ class VerificationView(View):
 
 
 class WelcomeTicketView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -547,7 +730,7 @@ class WelcomeTicketView(View):
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(
-                view_channel=True, send_messages=True, read_message_history=True
+                view_channel=True, send_messages=True, read_message_history=True, attach_files=True
             ),
             guild.me: discord.PermissionOverwrite(
                 view_channel=True, send_messages=True, manage_channels=True
@@ -561,6 +744,9 @@ class WelcomeTicketView(View):
         )
 
         close_view = TicketCloseView()
+
+        # Powiadomienie Zarządu
+        await ticket_channel.send(content=f"🔔 <@&{ZARZAD_ROLE_ID}> | Nowe zgłoszenie od {interaction.user.mention}")
 
         if mode == "podanie":
             embed = discord.Embed(
@@ -581,12 +767,8 @@ class WelcomeTicketView(View):
             )
             zarzad_view = PodanieZarzadView(applicant=interaction.user)
             await ticket_channel.send(
-                content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
                 embed=embed,
                 view=zarzad_view,
-                allowed_mentions=discord.AllowedMentions(
-                    roles=True, users=True
-                ),
             )
         else:
             embed = discord.Embed(
@@ -603,22 +785,17 @@ class WelcomeTicketView(View):
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev"
             )
             await ticket_channel.send(
-                content=f"<@&{ZARZAD_ROLE_ID}> {interaction.user.mention}",
                 embed=embed,
                 view=close_view,
-                allowed_mentions=discord.AllowedMentions(
-                    roles=True, users=True
-                ),
             )
 
         await interaction.response.send_message(
-            f"Utworzono dla Ciebie ticket: {ticket_channel.mention}",
+            f"✅ Utworzono dla Ciebie ticket: {ticket_channel.mention}",
             ephemeral=True,
         )
 
 
 class SetupPanelView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -722,7 +899,6 @@ async def update_employee_list(guild: discord.Guild):
 
 
 class EmployeePanelView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -740,7 +916,7 @@ class EmployeePanelView(View):
 
 
 # ==============================================================================
-# SYSTEM OPŁAT TYGODNIOWYCH (Z SYNCHRONIZACJĄ RÓL)
+# SYSTEM OPŁAT TYGODNIOWYCH (Z URLOPAMI)
 # ==============================================================================
 async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     if not custom_date_str:
@@ -788,7 +964,8 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
         members_list = section_members[header]
         if members_list:
             for m in members_list:
-                desc_lines.append(f"- {m.display_name} | {m.mention} ❌")
+                status_icon = "🏖️ Urlop" if is_on_loa(m.id) else "❌"
+                desc_lines.append(f"- {m.display_name} | {m.mention} {status_icon}")
                 total_count += 1
         else:
             desc_lines.append("-")
@@ -854,8 +1031,8 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
         for line in new_lines:
             line_updated = False
             for p_id in paid_user_ids:
-                if p_id in line and "❌" in line:
-                    updated_new_lines.append(line.replace("❌", "✅"))
+                if p_id in line and ("❌" in line or "🏖️ Urlop" in line):
+                    updated_new_lines.append(line.replace("❌", "✅").replace("🏖️ Urlop", "✅"))
                     line_updated = True
                     break
             if not line_updated:
@@ -869,11 +1046,9 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
 # SYSTEM MANDATÓW BCD
 # ==============================================================================
 class MandatReasonSelect(Select):
-
     def __init__(self, ukarany: discord.Member, wystawiajacy: discord.Member):
         self.ukarany = ukarany
         self.wystawiajacy = wystawiajacy
-
         options = [
             discord.SelectOption(
                 label="Wystawienie samochodów ponad limit",
@@ -979,9 +1154,7 @@ class MandatReasonSelect(Select):
             content=f"{self.ukarany.mention}", embed=embed
         )
 
-
 class MandatView(View):
-
     def __init__(self, ukarany: discord.Member, wystawiajacy: discord.Member):
         super().__init__(timeout=60)
         self.add_item(MandatReasonSelect(ukarany, wystawiajacy))
@@ -1034,7 +1207,6 @@ class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
 
 
 class DecyzjaZarzaduView(View):
-
     def __init__(self, target_member: discord.Member):
         super().__init__(timeout=None)
         self.target_member = target_member
@@ -1087,7 +1259,6 @@ class DecyzjaZarzaduView(View):
 
 
 class PodanieZarzadView(View):
-
     def __init__(self, applicant: discord.Member):
         super().__init__(timeout=None)
         self.applicant = applicant
@@ -1105,30 +1276,25 @@ class PodanieZarzadView(View):
             )
 
         guild = interaction.guild
-        swiezak_role = guild.get_role(SWIEZAK_ROLE_ID)
-        pracownik_role = guild.get_role(PRACOWNIK_ROLE_ID)
+        role_1 = guild.get_role(1503009723543191782)
+        role_2 = guild.get_role(1547341972484661318)
 
         try:
-            roles_to_add = []
-            if swiezak_role:
-                roles_to_add.append(swiezak_role)
-            if pracownik_role:
-                roles_to_add.append(pracownik_role)
+            roles_to_add = [r for r in [role_1, role_2] if r]
             if roles_to_add:
                 await self.applicant.add_roles(*roles_to_add)
         except discord.Forbidden:
             return await interaction.response.send_message(
                 "⚠️ Bot nie posiada uprawnień do nadania ról!", ephemeral=True
             )
+        
+        log_hr_history(self.applicant.id, "zatrudnienie", f"Zaakceptowano podanie przez {interaction.user.display_name}")
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.add_field(
             name="📊 Status Podania",
-            value=(
-                f"✅ **Zatwierdzone przez {interaction.user.mention}**\nNadano"
-                f" rangę: `{swiezak_role.name if swiezak_role else 'Świeżak'}`"
-            ),
+            value=f"✅ **Zatwierdzone przez {interaction.user.mention}**",
             inline=False,
         )
         for child in self.children:
@@ -1137,13 +1303,17 @@ class PodanieZarzadView(View):
         await interaction.response.edit_message(embed=embed, view=self)
         await update_employee_list(guild)
 
-        info_channel_mention = "<#1547357733626577027>"
-        await interaction.channel.send(
-            f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\nGratulacje {self.applicant.mention}! Twoje podanie"
-            " zostało zaakceptowane. Zapoznaj się z dostępnymi informacjami"
-            f" w {info_channel_mention}, a następnie zgłoś się do Zarządu po"
-            " przydzielenie odpowiedniego joba."
+        info_text = (
+            f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
+            f"Gratulacje {self.applicant.mention}! Twoje podanie zostało zaakceptowane. "
+            f"Zapoznaj się z dostępnymi informacjami ponizej , a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
+            f"# 📞 Radio Komisu: 541\n"
+            f"## 🔒 Hasło: 2505\n\n"
+            f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
+            f"## Zapoznaj Się z kanałem <#1547357733626577027> & <#1547355999751381032>\n"
+            f"<@794965527847632926>"
         )
+        await interaction.channel.send(info_text)
 
     @button(
         label="Odrzuć Podanie",
@@ -1178,7 +1348,6 @@ class PodanieZarzadView(View):
 # MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU / ZWOLNIENIA
 # ==============================================================================
 class PowodHRModal(Modal):
-
     def __init__(self, action_type: str, pracownik: discord.Member):
         title_map = {
             "awans": "Podaj powód awansu",
@@ -1239,6 +1408,8 @@ class PowodHRModal(Modal):
                     "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
                 )
 
+            log_hr_history(self.pracownik.id, "zwolnienie", f"Zwolniony przez {interaction.user.display_name}. Powód: {powod_tekst}")
+
             embed = discord.Embed(
                 title="✦ PIENIĄŻEK AUTO | ZWOLNIENIE Z KADRY",
                 description=(
@@ -1277,7 +1448,7 @@ class PowodHRModal(Modal):
                 ),
             )
 
-            log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
+            log_channel = interaction.guild.get_channel(LOG_ZWOLNIENIA_CHANNEL_ID)
             if log_channel:
                 await log_channel.send(
                     content=f"{self.pracownik.mention}", embed=embed
@@ -1316,6 +1487,8 @@ class PowodHRModal(Modal):
                 return await interaction.response.send_message(
                     "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
                 )
+
+            log_hr_history(self.pracownik.id, "awans", f"Awans na {new_role.name}. Powód: {powod_tekst}")
 
             embed = discord.Embed(
                 title="✦ PIENIĄŻEK AUTO | OFICJALNY AWANS",
@@ -1388,6 +1561,8 @@ class PowodHRModal(Modal):
                 return await interaction.response.send_message(
                     "⚠️ Brak uprawnień bota do zmiany ról!", ephemeral=True
                 )
+                
+            log_hr_history(self.pracownik.id, "degradacja", f"Degradacja na {new_role.name}. Powód: {powod_tekst}")
 
             embed = discord.Embed(
                 title="✦ PIENIĄŻEK AUTO | OFICJALNA DEGRADACJA",
@@ -1443,10 +1618,9 @@ class PowodHRModal(Modal):
 
 
 # ==============================================================================
-# TICKETY - ZAMYKANIE
+# TICKETY - ZAMYKANIE Z CLAIM
 # ==============================================================================
 class TicketCloseConfirmView(View):
-
     def __init__(self):
         super().__init__(timeout=60)
 
@@ -1477,14 +1651,31 @@ class TicketCloseConfirmView(View):
 
 
 class TicketCloseView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
+    @button(label="Przejmij Ticket (Claim)", style=ButtonStyle.primary, custom_id="claim_tckt", emoji="🙋‍♂️")
+    async def claim_ticket(self, interaction: Interaction, button: Button):
+        if not is_zarzad(interaction.user):
+            return await interaction.response.send_message("❌ Brak uprawnień do przejmowania ticketów!", ephemeral=True)
+        
+        button.disabled = True
+        button.label = f"Przejęty przez {interaction.user.display_name}"
+        button.style = ButtonStyle.success
+        
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.green()
+        embed.set_footer(text=f"Obsługiwany przez Zarząd: {interaction.user.display_name}")
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.channel.send(f"✅ Członek zarządu {interaction.user.mention} przejął to zgłoszenie. W czym możemy pomóc?")
+
     @button(
-        label="Zamknij ticket", style=ButtonStyle.red, custom_id="close_tckt"
+        label="Zamknij ticket", style=ButtonStyle.red, custom_id="close_tckt", emoji="🔒"
     )
     async def close_ticket(self, interaction: Interaction, button: Button):
+        if not is_zarzad(interaction.user):
+            return await interaction.response.send_message("❌ Tylko Zarząd może zamknąć ten ticket!", ephemeral=True)
         await interaction.response.send_message(
             "⚠️ Czy na pewno chcesz zamknąć ten ticket?",
             view=TicketCloseConfirmView(),
@@ -1496,7 +1687,6 @@ class TicketCloseView(View):
 # GŁÓWNA KLASA BOTA
 # ==============================================================================
 class MyClient(discord.Client):
-
     def __init__(self):
         super().__init__(intents=discord.Intents.all())
         self.tree = app_commands.CommandTree(self)
@@ -1513,6 +1703,7 @@ class MyClient(discord.Client):
         await self.tree.sync(guild=guild)
         self.auto_refresh_loop.start()
         self.sunday_fees_loop.start()
+        self.saturday_reminder_loop.start()
 
     @tasks.loop(minutes=10)
     async def auto_refresh_loop(self):
@@ -1549,12 +1740,48 @@ class MyClient(discord.Client):
                     except Exception as e:
                         print(f"Błąd niedzielnego auto-tworzenia opłat: {e}")
 
+    @tasks.loop(hours=1)
+    async def saturday_reminder_loop(self):
+        now = datetime.now()
+        if now.weekday() == 5 and now.hour == 18:
+            guild = self.get_guild(GUILD_ID)
+            if not guild: return
+            fees_channel = guild.get_channel(FEES_CHANNEL_ID)
+            if not fees_channel: return
+            
+            target_message = None
+            async for message in fees_channel.history(limit=10):
+                if message.author == guild.me and message.embeds and "OPŁATY TYGODNIOWE" in message.embeds[0].title:
+                    target_message = message
+                    break
+
+            if not target_message: return
+
+            content = target_message.embeds[0].description
+            to_ping = []
+            
+            for line in content.split("\n"):
+                if "❌" in line:
+                    for word in line.split():
+                        if word.startswith("<@") and word.endswith(">"):
+                            uid = word.strip("<@!>")
+                            if uid.isdigit() and not is_on_loa(int(uid)):
+                                to_ping.append(word)
+
+            if to_ping:
+                ping_str = " ".join(to_ping)
+                await fees_channel.send(f"⚠️ **PRZYPOMNIENIE O OPŁATACH:**\nOsoby, które jeszcze nie opłaciły składki: {ping_str}\n*Prosimy o uregulowanie płatności do jutra!*")
+
     @auto_refresh_loop.before_loop
     async def before_auto_refresh(self):
         await self.wait_until_ready()
 
     @sunday_fees_loop.before_loop
     async def before_sunday_fees(self):
+        await self.wait_until_ready()
+        
+    @saturday_reminder_loop.before_loop
+    async def before_saturday_reminder(self):
         await self.wait_until_ready()
 
 
@@ -1620,11 +1847,126 @@ async def on_member_join(member: discord.Member):
 # KOMENDY SLASH – PODZIAŁ NA SEKCJE (GRUPY)
 # ==============================================================================
 
+# SEKCJA: WARNY
+warn_group = app_commands.Group(name="warn", description="⚠️ [Sekcja Ostrzeżeń] Ostrzeżenia i kary dyscyplinarne")
+
+@warn_group.command(name="dodaj", description="Dodaje ostrzeżenie pracownikowi (Auto-degradacja przy 3 warnach)")
+@app_commands.describe(pracownik="Wybrany pracownik", powod="Powód ostrzeżenia")
+async def warn_dodaj(interaction: Interaction, pracownik: discord.Member, powod: str):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+
+    doc = warns_collection.find_one({"user_id": str(pracownik.id)})
+    warns_list = doc.get("warns", []) if doc else []
+
+    warn_entry = {
+        "id": len(warns_list) + 1,
+        "reason": powod,
+        "by": str(interaction.user.id),
+        "date": datetime.now().strftime("%d.%m.%Y %H:%M")
+    }
+    warns_list.append(warn_entry)
+
+    warns_collection.update_one(
+        {"user_id": str(pracownik.id)},
+        {"$set": {"user_id": str(pracownik.id), "warns": warns_list}},
+        upsert=True
+    )
+
+    log_hr_history(pracownik.id, "warn_add", f"Otrzymano ostrzeżenie #{warn_entry['id']}: {powod}")
+
+    embed = discord.Embed(
+        title="⚠️ NADANO OSTRZEŻENIE DYSCYPLINARNE",
+        description=f"Pracownik {pracownik.mention} otrzymał ostrzeżenie.",
+        color=discord.Color.red(),
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="👤 Pracownik", value=pracownik.mention, inline=True)
+    embed.add_field(name="👑 Nadający", value=interaction.user.mention, inline=True)
+    embed.add_field(name="📊 Łącznie warnów", value=f"`{len(warns_list)}`", inline=True)
+    embed.add_field(name="📝 Powód", value=f"```text\n{powod}\n```", inline=False)
+
+    log_channel = interaction.guild.get_channel(LOG_WARNY_CHANNEL_ID)
+    if log_channel:
+        await log_channel.send(content=pracownik.mention, embed=embed)
+
+    await interaction.response.send_message(content=pracownik.mention, embed=embed)
+    await process_warn_penalties(interaction.guild, pracownik, len(warns_list), powod)
+
+@warn_group.command(name="usun", description="Usuwa konkretne ostrzeżenie pracownika")
+@app_commands.describe(pracownik="Pracownik", warn_id="ID Ostrzeżenia")
+async def warn_usun(interaction: Interaction, pracownik: discord.Member, warn_id: int):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+        
+    doc = warns_collection.find_one({"user_id": str(pracownik.id)})
+    if not doc or not doc.get("warns"):
+        return await interaction.response.send_message("❌ Ten pracownik nie ma ostrzeżeń.", ephemeral=True)
+        
+    warns_list = doc["warns"]
+    new_warns = [w for w in warns_list if w["id"] != warn_id]
+    
+    if len(warns_list) == len(new_warns):
+        return await interaction.response.send_message(f"❌ Nie znaleziono warna o ID {warn_id}.", ephemeral=True)
+        
+    warns_collection.update_one({"user_id": str(pracownik.id)}, {"$set": {"warns": new_warns}})
+    log_hr_history(pracownik.id, "warn_remove", f"Usunięto ostrzeżenie #{warn_id}")
+    
+    await interaction.response.send_message(f"✅ Usunięto ostrzeżenie #{warn_id} użytkownika {pracownik.mention}.", ephemeral=True)
+
+@warn_group.command(name="lista", description="Wyświetla listę ostrzeżeń pracownika")
+async def warn_lista(interaction: Interaction, pracownik: discord.Member):
+    doc = warns_collection.find_one({"user_id": str(pracownik.id)})
+    warns_list = doc.get("warns", []) if doc else []
+    
+    if not warns_list:
+        return await interaction.response.send_message(f"✅ Użytkownik {pracownik.mention} nie posiada żadnych ostrzeżeń.", ephemeral=True)
+        
+    desc = "\n".join([f"`#{w['id']}` - **{w['date']}** - Powód: {w['reason']}" for w in warns_list])
+    embed = discord.Embed(title=f"⚠️ Kartoteka Ostrzeżeń: {pracownik.display_name}", description=desc, color=discord.Color.orange())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+client.tree.add_command(warn_group)
+
+
+# SEKCJA: MAGAZYN
+magazyn_group = app_commands.Group(name="magazyn", description="🚗 [Sekcja Magazynu] Pojazdy na placu")
+
+@magazyn_group.command(name="dodaj", description="Dodaje pojazd na stan komisu")
+@app_commands.describe(nazwa="Nazwa pojazdu (np. BMW M3 G80)", cena="Cena pojazdu")
+async def mag_dodaj(interaction: Interaction, nazwa: str, cena: str):
+    if not is_pracownik(interaction.user): return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    
+    vehicles_collection.insert_one({"nazwa": nazwa, "cena": cena, "added_by": str(interaction.user.id), "date": datetime.now().strftime("%d.%m.%Y")})
+    await interaction.response.send_message(f"✅ Dodano pojazd **{nazwa}** (Cena: {cena}) na stan komisu.")
+
+@magazyn_group.command(name="usun", description="Usuwa pojazd ze stanu (podaj pełną nazwę)")
+async def mag_usun(interaction: Interaction, nazwa: str):
+    if not is_pracownik(interaction.user): return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    
+    res = vehicles_collection.delete_one({"nazwa": nazwa})
+    if res.deleted_count > 0:
+        await interaction.response.send_message(f"✅ Usunięto pojazd **{nazwa}** z magazynu.")
+    else:
+        await interaction.response.send_message(f"❌ Nie znaleziono pojazdu **{nazwa}** na stanie.", ephemeral=True)
+
+@magazyn_group.command(name="pokaz", description="Wyświetla aktualny stan magazynowy")
+async def mag_pokaz(interaction: Interaction):
+    pojazdy = list(vehicles_collection.find())
+    if not pojazdy:
+        return await interaction.response.send_message("🚗 Magazyn komisu jest obecnie pusty.")
+        
+    desc = "\n".join([f"• **{p['nazwa']}** - {p['cena']} (Dodano: {p['date']})" for p in pojazdy])
+    embed = discord.Embed(title="🚗 MAGAZYN KOMISU PIENIĄŻEK AUTO", description=desc, color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed)
+
+client.tree.add_command(magazyn_group)
+
+
 # SEKCJA: TOKENY
 token_group = app_commands.Group(
     name="token", description="🪙 [Sekcja Tokenów] Zarządzanie i sprawdzenie tokenów"
 )
-
 
 @token_group.command(
     name="dodaj", description="Dodaje tokeny wybranemu użytkownikowi (Zarząd)"
@@ -1687,7 +2029,6 @@ async def token_dodaj(
         ephemeral=True,
     )
 
-
 @token_group.command(
     name="odejmij", description="Odejmuje tokeny wybranemu użytkownikowi (Zarząd)"
 )
@@ -1749,7 +2090,6 @@ async def token_odejmij(
         ephemeral=True,
     )
 
-
 @token_group.command(
     name="status", description="Sprawdź stan swoich zgromadzonych tokenów"
 )
@@ -1773,7 +2113,6 @@ async def token_status(interaction: Interaction):
     embed.set_footer(text="© Pieniążek Auto OSLORP | System Tokenów")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
-
 
 @token_group.command(
     name="zarzad", description="Sprawdź stan tokenów wybranego użytkownika (Zarząd)"
@@ -1800,7 +2139,6 @@ async def token_zarzad(interaction: Interaction, uzytkownik: discord.Member):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
 client.tree.add_command(token_group)
 
 
@@ -1809,9 +2147,8 @@ zarzad_group = app_commands.Group(
     name="zarzad", description="👑 [Sekcja Zarządu] Awansowanie, degradacja, zatrudnianie"
 )
 
-
 @zarzad_group.command(
-    name="zatrudnij", description="Zatrudnia pracownika i nadaje rangę Świeżak"
+    name="zatrudnij", description="Zatrudnia pracownika i nadaje role"
 )
 @app_commands.describe(pracownik="Wybrany użytkownik do zatrudnienia")
 async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
@@ -1821,25 +2158,21 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         )
 
     guild = interaction.guild
-    swiezak_role = guild.get_role(SWIEZAK_ROLE_ID)
-    pracownik_role = guild.get_role(PRACOWNIK_ROLE_ID)
+    role_1 = guild.get_role(1503009723543191782)
+    role_2 = guild.get_role(1547341972484661318)
 
-    if not swiezak_role:
-        return await interaction.response.send_message(
-            "❌ Nie znaleziono roli Świeżak na serwerze!", ephemeral=True
-        )
-
-    roles_to_add = [swiezak_role]
-    if pracownik_role and pracownik_role not in pracownik.roles:
-        roles_to_add.append(pracownik_role)
+    roles_to_add = [r for r in [role_1, role_2] if r]
 
     try:
-        await pracownik.add_roles(*roles_to_add)
+        if roles_to_add:
+            await pracownik.add_roles(*roles_to_add)
     except discord.Forbidden:
         return await interaction.response.send_message(
             "⚠️ Bot nie posiada uprawnień do nadania ról temu użytkownikowi!",
             ephemeral=True,
         )
+        
+    log_hr_history(pracownik.id, "zatrudnienie", f"Zatrudniony przez {interaction.user.display_name}")
 
     embed = discord.Embed(
         title="✦ PIENIĄŻEK AUTO | ZATRUDNIENIE W KADRZE",
@@ -1856,9 +2189,6 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     embed.add_field(
         name="👑 Zatrudniający", value=f"{interaction.user.mention}", inline=True
     )
-    embed.add_field(
-        name="🚀 Przyznana Ranga", value=f"**{swiezak_role.name}**", inline=False
-    )
     embed.set_footer(
         text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
         icon_url=(
@@ -1871,11 +2201,57 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         await log_channel.send(content=f"{pracownik.mention}", embed=embed)
 
     await update_employee_list(guild)
+    
+    info_text = (
+        f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
+        f"Gratulacje {pracownik.mention}! Zostałeś zatrudniony. "
+        f"Zapoznaj się z dostępnymi informacjami ponizej , a następnie zgłoś się do Zarządu po przydzielenie odpowiedniego joba.\n\n"
+        f"# 📞 Radio Komisu: 541\n"
+        f"## 🔒 Hasło: 2505\n\n"
+        f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
+        f"## Zapoznaj Się z kanałem <#1547357733626577027> & <#1547355999751381032>\n"
+        f"<@794965527847632926>"
+    )
+    await interaction.channel.send(info_text)
+    
     await interaction.response.send_message(
         f"✅ Pomyślnie zatrudniono pracownika {pracownik.mention}!",
         ephemeral=True,
     )
 
+@zarzad_group.command(name="kartoteka", description="Pobiera pełną kartotekę HR pracownika")
+@app_commands.describe(uzytkownik="Wybrany pracownik")
+async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+
+    doc = employees_collection.find_one({"user_id": str(uzytkownik.id)})
+    hire_date = doc.get("hire_date", "Brak danych") if doc else "Brak danych"
+    sales_total = doc.get("sales_total", 0) if doc else 0
+    history = doc.get("history", []) if doc else []
+    tokens = get_user_tokens(uzytkownik.id)
+
+    warn_doc = warns_collection.find_one({"user_id": str(uzytkownik.id)})
+    warns_count = len(warn_doc.get("warns", [])) if warn_doc else 0
+
+    embed = discord.Embed(
+        title=f"✦ KARTOTEKA HR | {uzytkownik.display_name}",
+        color=discord.Color.gold(),
+        timestamp=datetime.now()
+    )
+    embed.set_thumbnail(url=uzytkownik.display_avatar.url)
+    embed.add_field(name="👤 Użytkownik", value=f"{uzytkownik.mention}\n`ID: {uzytkownik.id}`", inline=True)
+    embed.add_field(name="📅 Data Zatrudnienia", value=f"`{hire_date}`", inline=True)
+    embed.add_field(name="🪙 Stan Tokenów", value=f"**{tokens}**", inline=True)
+    embed.add_field(name="💰 Łączny utarg", value=f"```css\n[{sales_total:,} USD]\n```", inline=False)
+    embed.add_field(name="⚠️ Ostrzeżenia", value=f"`{warns_count}`", inline=True)
+    embed.add_field(name="🏖️ Status LOA", value="`Tak`" if is_on_loa(uzytkownik.id) else "`Nie`", inline=True)
+
+    if history:
+        history_lines = [f"• `{h['date']}` [{h['type'].upper()}]: {h['details']}" for h in history[-8:]]
+        embed.add_field(name="📜 Ostatnia Historia HR", value="\n".join(history_lines), inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @zarzad_group.command(
     name="awans", description="Awansuj pracownika na wyższą rangę"
@@ -1913,7 +2289,7 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
 
 @zarzad_group.command(
     name="zwolnienie_nieoplaconych",
-    description="Zwalnia automatycznie wszystkie osoby z X na opłatach",
+    description="Zwalnia automatycznie wszystkie osoby z X na opłatach (pomija LOA)",
 )
 async def zwolnienie_nieoplaconych(interaction: Interaction):
     if not is_zarzad(interaction.user):
@@ -1959,6 +2335,9 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                 if word.startswith("<@") and word.endswith(">"):
                     try:
                         uid = int(word.strip("<@!>"))
+                        if is_on_loa(uid): 
+                            continue # POMIJA OSOBY NA URLOPIE
+                            
                         member = guild.get_member(uid)
                         if member and is_pracownik(member) and not is_zarzad(member):
                             roles_to_remove = [
@@ -1968,16 +2347,53 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                                 await member.remove_roles(*roles_to_remove)
                             if obywatel_role and obywatel_role not in member.roles:
                                 await member.add_roles(obywatel_role)
+                                
+                            log_hr_history(member.id, "auto_zwolnienie", "Automatyczne zwolnienie za brak opłat")
                             zszokowanych += 1
                     except Exception as e:
                         print(f"Błąd przy masowym zwalnianiu ID {uid}: {e}")
 
     await update_employee_list(guild)
     await interaction.followup.send(
-        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Łącznie przetworzono: **{zszokowanych}** osób.",
+        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokowanych}** osób.",
         ephemeral=True,
     )
 
+@zarzad_group.command(name="przypomnij_oplaty", description="Wymusza ręczne przypomnienie o opłatach na kanale")
+async def przypomnij_oplaty(interaction: Interaction):
+    if not is_zarzad(interaction.user):
+        return await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+    
+    guild = interaction.guild
+    fees_channel = guild.get_channel(FEES_CHANNEL_ID)
+    if not fees_channel:
+        return await interaction.response.send_message("❌ Brak kanału opłat!", ephemeral=True)
+        
+    target_message = None
+    async for message in fees_channel.history(limit=10):
+        if message.author == guild.me and message.embeds and "OPŁATY TYGODNIOWE" in message.embeds[0].title:
+            target_message = message
+            break
+
+    if not target_message: return await interaction.response.send_message("❌ Brak aktywnego panelu opłat!", ephemeral=True)
+
+    content = target_message.embeds[0].description
+    to_ping = []
+    
+    for line in content.split("\n"):
+        if "❌" in line:
+            for word in line.split():
+                if word.startswith("<@") and word.endswith(">"):
+                    uid = word.strip("<@!>")
+                    if uid.isdigit() and not is_on_loa(int(uid)):
+                        to_ping.append(word)
+
+    if to_ping:
+        ping_str = " ".join(to_ping)
+        await fees_channel.send(f"⚠️ **PRZYPOMNIENIE O OPŁATACH:**\nZarząd wzywa do opłacenia składek osoby: {ping_str}\n*Prosimy o natychmiastowe uregulowanie płatności!*")
+        await interaction.response.send_message("✅ Wysłano przypomnienie.", ephemeral=True)
+    else:
+        await interaction.response.send_message("✅ Wszyscy pracownicy mają opłacone składki lub są na urlopach.", ephemeral=True)
 
 @zarzad_group.command(
     name="mandat", description="Wystaw oficjalny mandat dyscyplinarny"
@@ -1999,6 +2415,52 @@ client.tree.add_command(zarzad_group)
 
 
 # POZOSTAŁE KOMENDY GLOBALNE
+@client.tree.command(name="urlop", description="Złóż wniosek o urlop (LOA)")
+async def urlop_cmd(interaction: Interaction):
+    if not is_pracownik(interaction.user):
+        return await interaction.response.send_message("❌ Komenda dostępna tylko dla pracowników!", ephemeral=True)
+    await interaction.response.send_modal(UrlopModal())
+
+@client.tree.command(name="ranking_sprzedazy", description="Pokazuje podium pracowników z największym utargiem w miesiącu")
+async def ranking_sprzedazy(interaction: Interaction):
+    if not is_pracownik(interaction.user):
+        return await interaction.response.send_message("❌ Brak dostępu!", ephemeral=True)
+
+    month_key = datetime.now().strftime("%Y-%m")
+    pipeline = [
+        {"$match": {"month": month_key}},
+        {"$group": {"_id": "$user_id", "total_sales": {"$sum": "$amount"}}},
+        {"$sort": {"total_sales": -1}},
+        {"$limit": 10}
+    ]
+    results = list(sales_collection.aggregate(pipeline))
+
+    embed = discord.Embed(
+        title=f"🏆 RANKING SPRZEDAWCÓW | {datetime.now().strftime('%m.%Y')}",
+        description="Oto zestawienie wyników sprzedaży za bieżący miesiąc:\n",
+        color=discord.Color.gold(),
+        timestamp=datetime.now()
+    )
+
+    if not results:
+        embed.description += "\n_Brak zarejestrowanych raportów sprzedaży w tym miesiącu._"
+    else:
+        for index, res in enumerate(results, start=1):
+            uid = int(res["_id"])
+            total = res["total_sales"]
+            member = interaction.guild.get_member(uid)
+            name = member.mention if member else f"`ID: {uid}`"
+
+            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else f"`{index}.`"
+            embed.add_field(
+                name=f"{medal} Miejsce #{index}",
+                value=f"Pracownik: {name}\nUtarg: **{total:,} USD**",
+                inline=False
+            )
+
+    embed.set_footer(text="© Pieniążek Auto OSLORP | Statystyki Sprzedaży")
+    await interaction.response.send_message(embed=embed)
+
 @client.tree.command(
     name="tokenwymiana", description="Panel wymiany tokenów dla zarządu"
 )
@@ -2354,6 +2816,12 @@ async def raport(
         return await interaction.response.send_message(
             "❌ Tylko dla pracowników!", ephemeral=True
         )
+
+    clean_kwota = re.sub(r"[^\d]", "", kwota)
+    if clean_kwota.isdigit():
+        add_sales_record(interaction.user.id, int(clean_kwota))
+
+    log_hr_history(interaction.user.id, "sprzedaz", f"Raport sprzedaży: {kwota}")
 
     embed = discord.Embed(
         title="✦ PIENIĄŻEK AUTO | RAPORT SPRZEDAŻY",
