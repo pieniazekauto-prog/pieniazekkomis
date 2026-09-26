@@ -162,13 +162,6 @@ FEES_CHANNEL_ID = 1503394328670634026
 TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
 TOKEN_LIST_CHANNEL_ID = 1548103462368321646  # Nowe ID kanału listy tokenów
 
-# NOWE KANAŁY LOGÓW
-LOG_URLOPY_CHANNEL_ID = 1553465440200564826
-LOG_WARNY_CHANNEL_ID = 1553465538200608848
-AWANS_LOG_CHANNEL_ID = 1553465625790259290
-LOG_ZWOLNIENIA_CHANNEL_ID = 1553465683042500730
-LOG_KOMENDY_CHANNEL_ID = 1553465717251383317
-
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
 )
@@ -231,16 +224,6 @@ class EndLoaView(View):
         button.disabled = True
         await interaction.response.edit_message(embed=embed, view=self)
 
-        log_channel = guild.get_channel(LOG_URLOPY_CHANNEL_ID)
-        if log_channel:
-            log_embed = discord.Embed(
-                title="🏖️ POWRÓT Z URLOPU",
-                description=f"Pracownik <@{self.user_id}> powrócił z urlopu i wznowił obowiązki.",
-                color=discord.Color.green(),
-                timestamp=datetime.now()
-            )
-            await log_channel.send(embed=log_embed)
-
 class UrlopModal(Modal, title="🏖️ Wniosek o Urlop (LOA)"):
     od_data = TextInput(label="Data rozpoczęcia", placeholder="np. 26.09.2026", required=True)
     do_data = TextInput(label="Data zakończenia", placeholder="np. 02.10.2026", required=True)
@@ -284,18 +267,10 @@ class UrlopModal(Modal, title="🏖️ Wniosek o Urlop (LOA)"):
         view = EndLoaView(interaction.user.id)
         await interaction.response.send_message(embed=embed, view=view)
 
-        log_channel = guild.get_channel(LOG_URLOPY_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send(embed=embed)
-
 # ==============================================================================
 # PROGI OSTRZEŻEŃ (AUTO-DEGRADACJA I ZWOLNIENIE DYSCYPLINARNE)
 # ==============================================================================
 async def process_warn_penalties(guild: discord.Guild, pracownik: discord.Member, warn_count: int, reason: str):
-    log_warn_channel = guild.get_channel(LOG_WARNY_CHANNEL_ID)
-    log_degrad_channel = guild.get_channel(AWANS_LOG_CHANNEL_ID)
-    log_zwolnienia_channel = guild.get_channel(LOG_ZWOLNIENIA_CHANNEL_ID)
-
     if warn_count == 3:
         current_index = get_current_grade_index(pracownik)
         if current_index > 0:
@@ -307,16 +282,6 @@ async def process_warn_penalties(guild: discord.Guild, pracownik: discord.Member
                 await pracownik.add_roles(new_role)
             
             log_hr_history(pracownik.id, "auto_degrad", f"Automatyczna degradacja za 3 warny (Powód: {reason})")
-            
-            embed = discord.Embed(
-                title="⚠️ AUTOMATYCZNA DEGRADACJA (3 WARNY)",
-                description=f"Pracownik {pracownik.mention} przekroczył limit 3 ostrzeżeń i został automatycznie zdegradowany.",
-                color=discord.Color.orange(),
-                timestamp=datetime.now()
-            )
-            embed.add_field(name="📉 Nowa Ranga", value=f"**{new_role.name if new_role else 'Niższa'}**", inline=True)
-            if log_degrad_channel:
-                await log_degrad_channel.send(content=pracownik.mention, embed=embed)
 
     elif warn_count >= 5:
         log_hr_history(pracownik.id, "auto_zwolnienie_req", f"Przekroczono 5 warnów ({reason})")
@@ -327,8 +292,7 @@ async def process_warn_penalties(guild: discord.Guild, pracownik: discord.Member
             color=discord.Color.dark_red(),
             timestamp=datetime.now()
         )
-        if log_zwolnienia_channel:
-            await log_zwolnienia_channel.send(content=f"<@&{ZARZAD_ROLE_ID}> {pracownik.mention}", embed=embed)
+        # Możesz wysłać to do wybranego kanału lub po prostu do interakcji, tutaj wysyłamy na kanał ogólny/komend lub gdzie trzeba, brak dedykowanego loga warnów.
 
 # ==============================================================================
 # SYSTEM LISTY TOKENÓW (AUTOMATYCZNA SYNCHRONIZACJA)
@@ -1448,16 +1412,9 @@ class PowodHRModal(Modal):
                 ),
             )
 
-            log_channel = interaction.guild.get_channel(LOG_ZWOLNIENIA_CHANNEL_ID)
-            if log_channel:
-                await log_channel.send(
-                    content=f"{self.pracownik.mention}", embed=embed
-                )
-
             await update_employee_list(interaction.guild)
             return await interaction.response.send_message(
-                f"✅ Pomyślnie zwolniono pracownika {self.pracownik.mention}.",
-                ephemeral=True,
+                content=f"{self.pracownik.mention}", embed=embed
             )
 
         current_index = get_current_grade_index(self.pracownik)
@@ -1532,15 +1489,9 @@ class PowodHRModal(Modal):
                 ),
             )
 
-            log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
-            if log_channel:
-                await log_channel.send(
-                    content=f"{self.pracownik.mention}", embed=embed
-                )
             await update_employee_list(interaction.guild)
             await interaction.response.send_message(
-                f"✅ Pomyślnie awansowano pracownika na **{new_role.name}**!",
-                ephemeral=True,
+                content=f"{self.pracownik.mention}", embed=embed
             )
 
         elif self.action_type == "degrad":
@@ -1605,15 +1556,9 @@ class PowodHRModal(Modal):
                 ),
             )
 
-            log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
-            if log_channel:
-                await log_channel.send(
-                    content=f"{self.pracownik.mention}", embed=embed
-                )
             await update_employee_list(interaction.guild)
             await interaction.response.send_message(
-                f"✅ Pomyślnie zdegradowano pracownika na **{new_role.name}**!",
-                ephemeral=True,
+                content=f"{self.pracownik.mention}", embed=embed
             )
 
 
@@ -1885,10 +1830,6 @@ async def warn_dodaj(interaction: Interaction, pracownik: discord.Member, powod:
     embed.add_field(name="👑 Nadający", value=interaction.user.mention, inline=True)
     embed.add_field(name="📊 Łącznie warnów", value=f"`{len(warns_list)}`", inline=True)
     embed.add_field(name="📝 Powód", value=f"```text\n{powod}\n```", inline=False)
-
-    log_channel = interaction.guild.get_channel(LOG_WARNY_CHANNEL_ID)
-    if log_channel:
-        await log_channel.send(content=pracownik.mention, embed=embed)
 
     await interaction.response.send_message(content=pracownik.mention, embed=embed)
     await process_warn_penalties(interaction.guild, pracownik, len(warns_list), powod)
@@ -2196,10 +2137,6 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         ),
     )
 
-    log_channel = interaction.guild.get_channel(AWANS_LOG_CHANNEL_ID)
-    if log_channel:
-        await log_channel.send(content=f"{pracownik.mention}", embed=embed)
-
     await update_employee_list(guild)
     
     info_text = (
@@ -2215,7 +2152,8 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
     await interaction.channel.send(info_text)
     
     await interaction.response.send_message(
-        f"✅ Pomyślnie zatrudniono pracownika {pracownik.mention}!",
+        content=f"{pracownik.mention}",
+        embed=embed,
         ephemeral=True,
     )
 
