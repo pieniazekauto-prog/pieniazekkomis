@@ -161,6 +161,7 @@ EMPLOYEE_LIST_CHANNEL_ID = 1547346427976482927
 FEES_CHANNEL_ID = 1503394328670634026
 TOKEN_LOG_CHANNEL_ID = 1549332231246446694  # Kanał logów tokenów
 TOKEN_LIST_CHANNEL_ID = 1548103462368321646  # Nowe ID kanału listy tokenów
+HR_LOG_CHANNEL_ID = 1503394099661639680    # Kanał logów awansów/degradacji/zatrudnień
 
 WELCOME_IMAGE_URL = (
     "https://raw.githubusercontent.com/twoje-repo/twoja-sciezka/main/image_9.png"
@@ -185,6 +186,15 @@ def get_current_grade_index(member: discord.Member) -> int:
         if any(r.id == g_id for r in member.roles):
             highest_index = i
     return highest_index
+
+async def send_hr_log(guild: discord.Guild, embed: discord.Embed):
+    """Pomocnicza funkcja wysyłająca embed na dedykowany kanał logów HR."""
+    channel = guild.get_channel(HR_LOG_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"Błąd wysyłania logu HR: {e}")
 
 # ==============================================================================
 # SYSTEM URLOPOWY (Z PRZYCISKIEM ZAKOŃCZENIA)
@@ -266,6 +276,7 @@ class UrlopModal(Modal, title="🏖️ Wniosek o Urlop (LOA)"):
 
         view = EndLoaView(interaction.user.id)
         await interaction.response.send_message(embed=embed, view=view)
+        await send_hr_log(guild, embed)
 
 # ==============================================================================
 # PROGI OSTRZEŻEŃ (AUTO-DEGRADACJA I ZWOLNIENIE DYSCYPLINARNE)
@@ -1258,7 +1269,7 @@ class PodanieZarzadView(View):
         await interaction.response.edit_message(embed=embed, view=self)
         await update_employee_list(guild)
 
-        # Wysyłanie publicznego embeda o zatrudnieniu na ten sam kanał (dla całej kadry)
+        # Publiczny embed o zatrudnieniu
         public_embed = discord.Embed(
             title="✦ PIENIĄŻEK AUTO | ZATRUDNIENIE W KADRZE",
             description=f"Pracownik {self.applicant.mention} został oficjalnie zatrudniony w strukturach komisu!",
@@ -1273,6 +1284,7 @@ class PodanieZarzadView(View):
             icon_url=interaction.guild.icon.url if interaction.guild.icon else None,
         )
         await interaction.channel.send(embed=public_embed)
+        await send_hr_log(guild, public_embed)
 
         info_text = (
             f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
@@ -1357,10 +1369,10 @@ class PowodHRModal(Modal):
 
     async def on_submit(self, interaction: Interaction):
         powod_tekst = self.powod_input.value
+        guild = interaction.guild
 
         if self.action_type == "zwolnienie":
             data_tekst = self.data_input.value
-            guild = interaction.guild
             obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
             zla_rola_id = 1503009723543191782
 
@@ -1413,13 +1425,14 @@ class PowodHRModal(Modal):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
                 icon_url=(
-                    interaction.guild.icon.url
-                    if interaction.guild.icon
+                    guild.icon.url
+                    if guild.icon
                     else None
                 ),
             )
 
-            await update_employee_list(interaction.guild)
+            await update_employee_list(guild)
+            await send_hr_log(guild, embed)
             return await interaction.response.send_message(
                 content=f"{self.pracownik.mention}", embed=embed
             )
@@ -1439,8 +1452,8 @@ class PowodHRModal(Modal):
                     f"⚠️ Pracownik ma już najwyższą rangę!", ephemeral=True
                 )
 
-            old_role = interaction.guild.get_role(GRADES[current_index])
-            new_role = interaction.guild.get_role(GRADES[current_index + 1])
+            old_role = guild.get_role(GRADES[current_index])
+            new_role = guild.get_role(GRADES[current_index + 1])
 
             try:
                 if old_role and old_role in self.pracownik.roles:
@@ -1490,13 +1503,14 @@ class PowodHRModal(Modal):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
                 icon_url=(
-                    interaction.guild.icon.url
-                    if interaction.guild.icon
+                    guild.icon.url
+                    if guild.icon
                     else None
                 ),
             )
 
-            await update_employee_list(interaction.guild)
+            await update_employee_list(guild)
+            await send_hr_log(guild, embed)
             await interaction.response.send_message(
                 content=f"{self.pracownik.mention}", embed=embed
             )
@@ -1507,8 +1521,8 @@ class PowodHRModal(Modal):
                     f"⚠️ Pracownik ma już najniższą rangę!", ephemeral=True
                 )
 
-            old_role = interaction.guild.get_role(GRADES[current_index])
-            new_role = interaction.guild.get_role(GRADES[current_index - 1])
+            old_role = guild.get_role(GRADES[current_index])
+            new_role = guild.get_role(GRADES[current_index - 1])
 
             try:
                 if old_role and old_role in self.pracownik.roles:
@@ -1557,13 +1571,14 @@ class PowodHRModal(Modal):
             embed.set_footer(
                 text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
                 icon_url=(
-                    interaction.guild.icon.url
-                    if interaction.guild.icon
+                    guild.icon.url
+                    if guild.icon
                     else None
                 ),
             )
 
-            await update_employee_list(interaction.guild)
+            await update_employee_list(guild)
+            await send_hr_log(guild, embed)
             await interaction.response.send_message(
                 content=f"{self.pracownik.mention}", embed=embed
             )
@@ -1697,7 +1712,7 @@ class MyClient(discord.Client):
         now = datetime.now()
         if now.weekday() == 5 and now.hour == 18:
             guild = self.get_guild(GUILD_ID)
-            if guild: return
+            if not guild: return
             fees_channel = guild.get_channel(FEES_CHANNEL_ID)
             if not fees_channel: return
             
@@ -2146,8 +2161,9 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
 
     await update_employee_list(guild)
     
-    # Wysłanie publicznego embeda na dany kanał
+    # Wysyłanie publicznego embeda na dany kanał oraz logów HR
     await interaction.channel.send(embed=embed)
+    await send_hr_log(guild, embed)
 
     info_text = (
         f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
@@ -2324,6 +2340,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
             icon_url=guild.icon.url if guild.icon else None
         )
         await interaction.channel.send(embed=embed_zwolnienia)
+        await send_hr_log(guild, embed_zwolnienia)
 
     await interaction.followup.send(
         f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokowanych}** osób.",
