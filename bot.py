@@ -1258,6 +1258,22 @@ class PodanieZarzadView(View):
         await interaction.response.edit_message(embed=embed, view=self)
         await update_employee_list(guild)
 
+        # Wysyłanie publicznego embeda o zatrudnieniu na ten sam kanał (dla całej kadry)
+        public_embed = discord.Embed(
+            title="✦ PIENIĄŻEK AUTO | ZATRUDNIENIE W KADRZE",
+            description=f"Pracownik {self.applicant.mention} został oficjalnie zatrudniony w strukturach komisu!",
+            color=discord.Color.green(),
+            timestamp=datetime.now(),
+        )
+        public_embed.set_thumbnail(url=self.applicant.display_avatar.url)
+        public_embed.add_field(name="👤 Nowy Pracownik", value=f"{self.applicant.mention}\n`ID: {self.applicant.id}`", inline=True)
+        public_embed.add_field(name="👑 Zatrudniający", value=f"{interaction.user.mention}", inline=True)
+        public_embed.set_footer(
+            text="© Pieniążek Auto OSLORP | powered by Keshy Dev",
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None,
+        )
+        await interaction.channel.send(embed=public_embed)
+
         info_text = (
             f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
             f"Gratulacje {self.applicant.mention}! Twoje podanie zostało zaakceptowane. "
@@ -1266,7 +1282,7 @@ class PodanieZarzadView(View):
             f"## 🔒 Hasło: 2505\n\n"
             f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
             f"## Zapoznaj Się z kanałem <#1547357733626577027> & <#1547355999751381032>\n"
-            f"<@794965527847632926>"
+            f"{self.applicant.mention}"
         )
         await interaction.channel.send(info_text)
 
@@ -1681,7 +1697,7 @@ class MyClient(discord.Client):
         now = datetime.now()
         if now.weekday() == 5 and now.hour == 18:
             guild = self.get_guild(GUILD_ID)
-            if not guild: return
+            if guild: return
             fees_channel = guild.get_channel(FEES_CHANNEL_ID)
             if not fees_channel: return
             
@@ -2130,6 +2146,9 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
 
     await update_employee_list(guild)
     
+    # Wysłanie publicznego embeda na dany kanał
+    await interaction.channel.send(embed=embed)
+
     info_text = (
         f"❗⬩𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝗰𝗷𝗲\n\n"
         f"Gratulacje {pracownik.mention}! Zostałeś zatrudniony. "
@@ -2138,13 +2157,12 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
         f"## 🔒 Hasło: 2505\n\n"
         f"### pamiętaj będąc na komisie wysyłać newsy z kanału <#1503481202718277762>\n\n"
         f"## Zapoznaj Się z kanałem <#1547357733626577027> & <#1547355999751381032>\n"
-        f"<@794965527847632926>"
+        f"{pracownik.mention}"
     )
     await interaction.channel.send(info_text)
     
     await interaction.response.send_message(
-        content=f"{pracownik.mention}",
-        embed=embed,
+        content=f"✅ Pomyślnie zatrudniono {pracownik.mention}!",
         ephemeral=True,
     )
 
@@ -2255,6 +2273,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
     content = target_embed.description
     lines = content.split("\n")
     zszokowanych = 0
+    zwolnieni_wzmianki = []
     obywatel_role = guild.get_role(PRACOWNIK_ROLE_ID)
     zla_rola_id = 1503009723543191782
 
@@ -2279,10 +2298,33 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                                 
                             log_hr_history(member.id, "auto_zwolnienie", "Automatyczne zwolnienie za brak opłat")
                             zszokowanych += 1
+                            zwolnieni_wzmianki.append(member.mention)
                     except Exception as e:
                         print(f"Błąd przy masowym zwalnianiu ID {uid}: {e}")
 
     await update_employee_list(guild)
+
+    if zwolnieni_wzmianki:
+        embed_zwolnienia = discord.Embed(
+            title="✦ PIENIĄŻEK AUTO | MASOWE ZWOLNIENIE DYSCYPLINARNE",
+            description=(
+                "Zarząd dokonał masowego zwolnienia pracowników, którzy nie uregulowali składek tygodniowych w wyznaczonym terminie.\n\n"
+                f"**Zwolnione osoby:**\n" + ", ".join(zwolnieni_wzmianki)
+            ),
+            color=discord.Color.red(),
+            timestamp=datetime.now()
+        )
+        embed_zwolnienia.add_field(
+            name="📝 Powód",
+            value="```text\nNiedopełnienie obowiązku opłacenia składki tygodniowej\n```",
+            inline=False
+        )
+        embed_zwolnienia.set_footer(
+            text="© Pieniążek Auto OSLORP | System Opłat",
+            icon_url=guild.icon.url if guild.icon else None
+        )
+        await interaction.channel.send(embed=embed_zwolnienia)
+
     await interaction.followup.send(
         f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokowanych}** osób.",
         ephemeral=True,
