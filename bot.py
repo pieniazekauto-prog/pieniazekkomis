@@ -355,7 +355,6 @@ async def update_token_list_embed(guild: discord.Guild):
 
     await channel.send(embed=embed)
 
-
 # ==============================================================================
 # MODAL DO USTAWIANIA DANYCH IC
 # ==============================================================================
@@ -380,7 +379,6 @@ class UstawDaneModal(Modal, title="Ustaw dane IC"):
                 "❌ Bot nie ma uprawnień do zmiany Twojego pseudonimu.",
                 ephemeral=True,
             )
-
 
 # ==============================================================================
 # SYSTEM WYMIANY TOKENÓW
@@ -582,13 +580,11 @@ class WymianaSelect(Select):
             view=None,
         )
 
-
 class WymianaView(View):
     def __init__(self, author_id: int, target_user: discord.Member):
         super().__init__(timeout=60)
         self.author_id = author_id
         self.add_item(WymianaSelect(target_user))
-
 
 # ==============================================================================
 # SYSTEM WERYFIKACJI I WIDOKI GŁÓWNE
@@ -601,7 +597,7 @@ class VerificationView(View):
         label="Zweryfikuj się",
         style=ButtonStyle.success,
         custom_id="verify_btn",
-        emoji="🛡️",
+        emoji="🛡️️",
     )
     async def verify_user(self, interaction: Interaction, button: Button):
         guild = interaction.guild
@@ -629,7 +625,6 @@ class VerificationView(View):
             await interaction.response.send_message(
                 "❌ Bot posiada uprawnień do nadania tej roli.", ephemeral=True
             )
-
 
 class WelcomeTicketView(View):
     def __init__(self):
@@ -760,7 +755,6 @@ class WelcomeTicketView(View):
             ephemeral=True,
         )
 
-
 class SetupPanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -797,7 +791,6 @@ class SetupPanelView(View):
         await temp_obj.create_ticket(
             interaction, "pomoc", "👑 ⟡ 𝐒𝐭𝐫𝐞𝐟𝐚 𝐙𝐚𝐫𝐳𝐚𝐝𝐮", "pomoc"
         )
-
 
 # ==============================================================================
 # SYSTEM LISTY PRACOWNIKÓW
@@ -863,7 +856,6 @@ async def update_employee_list(guild: discord.Guild):
 
     await channel.send(embed=embed, view=EmployeePanelView())
 
-
 class EmployeePanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -879,7 +871,6 @@ class EmployeePanelView(View):
         await interaction.response.send_message(
             "✅ Odświeżono listę pracowników!", ephemeral=True
         )
-
 
 # ==============================================================================
 # SYSTEM OPŁAT TYGODNIOWYCH (Z URLOPAMI)
@@ -953,7 +944,6 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     )
     return embed
 
-
 async def sync_fees_embed_on_role_change(guild: discord.Guild):
     fees_channel = guild.get_channel(FEES_CHANNEL_ID)
     if not fees_channel:
@@ -1006,7 +996,6 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
         new_embed.description = "\n".join(updated_new_lines)
 
     await target_message.edit(embed=new_embed)
-
 
 # ==============================================================================
 # SYSTEM MANDATÓW BCD
@@ -1125,7 +1114,6 @@ class MandatView(View):
         super().__init__(timeout=60)
         self.add_item(MandatReasonSelect(ukarany, wystawiajacy))
 
-
 # ==============================================================================
 # SYSTEM WYPOWIEDZEŃ I PODAŃ
 # ==============================================================================
@@ -1170,7 +1158,6 @@ class WypowiedzenieModal(Modal, title="📄 Wniosek o Wypowiedzenie"):
 
         view = DecyzjaZarzaduView(target_member=interaction.user)
         await interaction.response.send_message(embed=embed, view=view)
-
 
 class DecyzjaZarzaduView(View):
     def __init__(self, target_member: discord.Member):
@@ -1222,7 +1209,6 @@ class DecyzjaZarzaduView(View):
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(embed=embed, view=self)
-
 
 class PodanieZarzadView(View):
     def __init__(self, applicant: discord.Member):
@@ -1325,7 +1311,6 @@ class PodanieZarzadView(View):
             f"❌ Przykro nam {self.applicant.mention}, Twoje podanie zostało"
             " odrzucone."
         )
-
 
 # ==============================================================================
 # MODAL DO WPROWADZANIA POWODU AWANSU / DEGRADU / ZWOLNIENIA
@@ -1583,7 +1568,6 @@ class PowodHRModal(Modal):
                 content=f"{self.pracownik.mention}", embed=embed
             )
 
-
 # ==============================================================================
 # TICKETY - ZAMYKANIE Z CLAIM
 # ==============================================================================
@@ -1616,7 +1600,6 @@ class TicketCloseConfirmView(View):
             "✅ Anulowano.", ephemeral=True
         )
 
-
 class TicketCloseView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -1648,7 +1631,6 @@ class TicketCloseView(View):
             view=TicketCloseConfirmView(),
             ephemeral=True,
         )
-
 
 # ==============================================================================
 # GŁÓWNA KLASA BOTA
@@ -1751,14 +1733,11 @@ class MyClient(discord.Client):
     async def before_saturday_reminder(self):
         await self.wait_until_ready()
 
-
 client = MyClient()
-
 
 @client.event
 async def on_ready():
     print(f"✅ Bot działa! Zalogowano jako: {client.user}")
-
 
 # ==============================================================================
 # AUTOMATYCZNE SYNCHRONIZACJE
@@ -1773,7 +1752,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             await sync_fees_embed_on_role_change(after.guild)
         except Exception as e:
             print(f"Błąd aktualizacji przy zmianie ról: {e}")
-
 
 @client.event
 async def on_member_join(member: discord.Member):
@@ -1790,7 +1768,7 @@ async def on_member_join(member: discord.Member):
             f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg"
             " najbardziej prestiżowego komisu w mieście.\n\n"
             "**Jak rozpocząć karierę?**\n"
-            "• Kliknij poniższy przycisk **🛡️ Zweryfikuj się**, aby uzyskać"
+            "• Kliknij poniższy przycisk **🛡️️ Zweryfikuj się**, aby uzyskać"
             " dostęp do serwera.\n• Użyj **✏️ Ustaw dane IC**, aby dopasować"
             " swoje imię i nazwisko.\n• Sprawdź zakładki poniżej w celu"
             " złożenia podania lub kontaktu z zarządem."
@@ -1808,7 +1786,6 @@ async def on_member_join(member: discord.Member):
     await channel.send(
         content=f"{member.mention}", embed=embed, view=WelcomeTicketView()
     )
-
 
 # ==============================================================================
 # KOMENDY SLASH – PODZIAŁ NA SEKCJE (Z PROFESJONALNYM OPISAMI)
@@ -1886,11 +1863,10 @@ async def warn_lista(interaction: Interaction, pracownik: discord.Member):
         return await interaction.response.send_message(f"✅ Użytkownik {pracownik.mention} nie posiada żadnych ostrzeżeń.", ephemeral=True)
         
     desc = "\n".join([f"`#{w['id']}` - **{w['date']}** - Powód: {w['reason']}" for w in warns_list])
-    embed = discord.Embed(title=f"⚠️ Kartoteka Ostrzeżeń: {pracownik.display_name}", description=desc, color=discord.Color.orange())
+    embed = discord.Embed(title=f"⚠️️ Kartoteka Ostrzeżeń: {pracownik.display_name}", description=desc, color=discord.Color.orange())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 client.tree.add_command(warn_group)
-
 
 # SEKCJA: MAGAZYN
 magazyn_group = app_commands.Group(name="magazyn", description="🚗 [Sekcja Magazynu] Pojazdy na placu")
@@ -1924,7 +1900,6 @@ async def mag_pokaz(interaction: Interaction):
     await interaction.response.send_message(embed=embed)
 
 client.tree.add_command(magazyn_group)
-
 
 # SEKCJA: TOKENY
 token_group = app_commands.Group(
@@ -2104,7 +2079,6 @@ async def token_zarzad(interaction: Interaction, uzytkownik: discord.Member):
 
 client.tree.add_command(token_group)
 
-
 # SEKCJA: ZARZĄD I KADRA (HR)
 zarzad_group = app_commands.Group(
     name="zarzad", description="👑 [Sekcja Zarządu] Awansowanie, degradacja, zatrudnianie"
@@ -2161,7 +2135,6 @@ async def zatrudnij(interaction: Interaction, pracownik: discord.Member):
 
     await update_employee_list(guild)
     
-    # Wysyłanie publicznego embeda na dany kanał oraz logów HR
     await interaction.channel.send(embed=embed)
     await send_hr_log(guild, embed)
 
@@ -2197,24 +2170,48 @@ async def kartoteka(interaction: Interaction, uzytkownik: discord.Member):
     warn_doc = warns_collection.find_one({"user_id": str(uzytkownik.id)})
     warns_count = len(warn_doc.get("warns", [])) if warn_doc else 0
 
+    # Obliczanie utargu w obecnym tygodniu z bazy danych
+    now = datetime.now()
+    start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    weekly_pipeline = [
+        {"$match": {"user_id": str(uzytkownik.id), "date": {"$gte": start_of_week}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    weekly_res = list(sales_collection.aggregate(weekly_pipeline))
+    sales_weekly = weekly_res[0]["total"] if weekly_res else 0
+
+    loa_status = "🏖️ Na urlopie (LOA)" if is_on_loa(uzytkownik.id) else "🟢 Aktywny w służbie"
+
     embed = discord.Embed(
-        title=f"✦ KARTOTEKA HR | {uzytkownik.display_name}",
+        title=f"✦ KARTOTEKA PERSONALNA HR | {uzytkownik.display_name}",
+        description=f"Oficjalny akt osobowy i statystyki pracownika **Pieniążek Auto**.",
         color=discord.Color.gold(),
         timestamp=datetime.now()
     )
     embed.set_thumbnail(url=uzytkownik.display_avatar.url)
-    embed.add_field(name="👤 Użytkownik", value=f"{uzytkownik.mention}\n`ID: {uzytkownik.id}`", inline=True)
+    
+    embed.add_field(name="👤 Pracownik", value=f"{uzytkownik.mention}\n`ID: {uzytkownik.id}`", inline=True)
     embed.add_field(name="📅 Data Zatrudnienia", value=f"`{hire_date}`", inline=True)
-    embed.add_field(name="🪙 Stan Tokenów", value=f"**{tokens}**", inline=True)
-    embed.add_field(name="💰 Łączny utarg", value=f"```css\n[{sales_total:,} USD]\n```", inline=False)
-    embed.add_field(name="⚠️ Ostrzeżenia", value=f"{warns_count}", inline=True)
-    embed.add_field(name="🏖️ Status LOA", value="`Tak`" if is_on_loa(uzytkownik.id) else "`Nie`", inline=True)
+    embed.add_field(name="🏖️ Status LOA", value=f"**{loa_status}**", inline=True)
+
+    embed.add_field(name="💰 Łączny utarg", value=f"```css\n[{sales_total:,} USD]\n```", inline=True)
+    embed.add_field(name="📈 Utarg w tym tygodniu", value=f"```css\n[{sales_weekly:,} USD]\n```", inline=True)
+
+    embed.add_field(name="⚠️ Ostrzeżenia", value=f"`{warns_count} / 5`", inline=True)
+    embed.add_field(name="🪙 Stan Tokenów", value=f"**{tokens}** token(ów)", inline=True)
 
     if history:
-        history_lines = [f"• `{h['date']}` [{h['type'].upper()}]: {h['details']}" for h in history[-8:]]
-        embed.add_field(name="📜 Ostatnia Historia HR", value="\n".join(history_lines), inline=False)
+        history_lines = [f"• `{h['date']}` [{h['type'].upper()}]: {h['details']}" for h in history[-6:]]
+        embed.add_field(name="📜 Ostatnie Wpisy HR", value="\n".join(history_lines), inline=False)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed.set_footer(
+        text="© Pieniążek Auto OSLORP | System HR Zarządu",
+        icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+    )
+
+    # Wysłanie publicznej wiadomości widocznej dla wszystkich
+    await interaction.response.send_message(embed=embed)
 
 @zarzad_group.command(
     name="awans", description="[Zarząd] Awansowanie pracownika na wyższy stopień hierarchii"
@@ -2227,7 +2224,6 @@ async def awans(interaction: Interaction, pracownik: discord.Member):
         )
     await interaction.response.send_modal(PowodHRModal("awans", pracownik))
 
-
 @zarzad_group.command(
     name="degrad", description="[Zarząd] Degradacja pracownika na niższy stopień"
 )
@@ -2239,7 +2235,6 @@ async def degrad(interaction: Interaction, pracownik: discord.Member):
         )
     await interaction.response.send_modal(PowodHRModal("degrad", pracownik))
 
-
 @zarzad_group.command(name="zwolnienie", description="[Zarząd] Dyscyplinarne zwolnienie pracownika z komisu")
 @app_commands.describe(pracownik="Pracownik do zwolnienia")
 async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
@@ -2248,7 +2243,6 @@ async def zwolnienie(interaction: Interaction, pracownik: discord.Member):
             "❌ Brak uprawnień!", ephemeral=True
         )
     await interaction.response.send_modal(PowodHRModal("zwolnienie", pracownik))
-
 
 @zarzad_group.command(
     name="zwolnienie_nieoplaconych",
@@ -2343,7 +2337,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
         await send_hr_log(guild, embed_zwolnienia)
 
     await interaction.followup.send(
-        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokowanych}** osób.",
+        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokovaných}** osób.",
         ephemeral=True,
     )
 
@@ -2398,12 +2392,10 @@ async def mandat(interaction: Interaction, pracownik: discord.Member):
         ephemeral=True,
     )
 
-
 client.tree.add_command(zarzad_group)
 
-
 # ==============================================================================
-# POZOSTAŁE KOMENDY GLOBALNE (W TYM NOWA /purlop)
+# POZOSTAŁE KOMENDY GLOBALNE (W TYM /purlop)
 # ==============================================================================
 @client.tree.command(name="urlop", description="[Pracownik] Złożenie oficjalnego wniosku o urlop (LOA)")
 async def urlop_cmd(interaction: Interaction):
@@ -2437,46 +2429,6 @@ async def purlop_cmd(interaction: Interaction):
     embed.set_footer(text="© Pieniążek Auto OSLORP | System Urlopowy")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@client.tree.command(name="ranking_sprzedazy", description="Pokazuje podium pracowników z największym utargiem w miesiącu")
-async def ranking_sprzedazy(interaction: Interaction):
-    if not is_pracownik(interaction.user):
-        return await interaction.response.send_message("❌ Brak dostępu!", ephemeral=True)
-
-    month_key = datetime.now().strftime("%Y-%m")
-    pipeline = [
-        {"$match": {"month": month_key}},
-        {"$group": {"_id": "$user_id", "total_sales": {"$sum": "$amount"}}},
-        {"$sort": {"total_sales": -1}},
-        {"$limit": 10}
-    ]
-    results = list(sales_collection.aggregate(pipeline))
-
-    embed = discord.Embed(
-        title=f"🏆 RANKING SPRZEDAWCÓW | {datetime.now().strftime('%m.%Y')}",
-        description="Oto zestawienie wyników sprzedaży za bieżący miesiąc:\n",
-        color=discord.Color.gold(),
-        timestamp=datetime.now()
-    )
-
-    if not results:
-        embed.description += "\n_Brak zarejestrowanych raportów sprzedaży w tym miesiącu._"
-    else:
-        for index, res in enumerate(results, start=1):
-            uid = int(res["_id"])
-            total = res["total_sales"]
-            member = interaction.guild.get_member(uid)
-            name = member.mention if member else f"`ID: {uid}`"
-
-            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else f"`{index}.`"
-            embed.add_field(
-                name=f"{medal} Miejsce #{index}",
-                value=f"Pracownik: {name}\nUtarg: **{total:,} USD**",
-                inline=False
-            )
-
-    embed.set_footer(text="© Pieniążek Auto OSLORP | Statystyki Sprzedaży")
-    await interaction.response.send_message(embed=embed)
-
 @client.tree.command(
     name="tokenwymiana", description="Panel wymiany tokenów dla zarządu"
 )
@@ -2497,7 +2449,6 @@ async def tokenwymiana(interaction: Interaction, uzytkownik: discord.Member):
         ephemeral=True,
     )
 
-
 @client.tree.command(
     name="panel_tokenow", description="Wysyła lub odświeża ranking tokenów"
 )
@@ -2510,7 +2461,6 @@ async def panel_tokenow(interaction: Interaction):
     await interaction.response.send_message(
         "✅ Wygenerowano/odświeżono panel rankingu tokenów!", ephemeral=True
     )
-
 
 @client.tree.command(
     name="setup_panel", description="Wysyła odświeżony panel główny komisu"
@@ -2548,7 +2498,6 @@ async def setup_panel(interaction: Interaction):
         "✅ Pomyślnie wysłano panel!", ephemeral=True
     )
 
-
 @client.tree.command(
     name="panel_pracownikow",
     description="Wysyła lub odświeża automatyczną listę pracowników",
@@ -2562,7 +2511,6 @@ async def panel_pracownikow(interaction: Interaction):
     await interaction.response.send_message(
         "✅ Wygenerowano/odświeżono listę pracowników!", ephemeral=True
     )
-
 
 @client.tree.command(
     name="panel_oplat",
@@ -2589,7 +2537,6 @@ async def panel_oplat(interaction: Interaction, zakres_dat: str = None):
         f" {fees_channel.mention}!",
         ephemeral=True,
     )
-
 
 @client.tree.command(
     name="oplata",
@@ -2712,7 +2659,6 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
         ephemeral=True,
     )
 
-
 @client.tree.command(name="skip", description="Oznacza ticket jako w trakcie")
 async def skip_ticket(interaction: Interaction):
     if not is_zarzad(interaction.user):
@@ -2733,7 +2679,6 @@ async def skip_ticket(interaction: Interaction):
     embed.set_footer(text="© Pieniążek Auto OSLORP | powered by Keshy Dev")
     await interaction.response.send_message(embed=embed)
 
-
 @client.tree.command(name="add", description="Dodaje użytkownika do ticketa")
 @app_commands.describe(member="Użytkownik do dodania")
 async def add_member(interaction: Interaction, member: discord.Member):
@@ -2748,7 +2693,6 @@ async def add_member(interaction: Interaction, member: discord.Member):
         f"✅ Pomyślnie dodano {member.mention} do ticketa."
     )
 
-
 @client.tree.command(name="remove", description="Wyrzuca użytkownika z ticketa")
 @app_commands.describe(member="Użytkownik do usunięcia")
 async def remove_member(interaction: Interaction, member: discord.Member):
@@ -2760,7 +2704,6 @@ async def remove_member(interaction: Interaction, member: discord.Member):
     await interaction.response.send_message(
         f"🔒 Użytkownik {member.mention} został usunięty z ticketa."
     )
-
 
 @client.tree.command(name="close", description="Zamyka bieżący ticket")
 async def close_ticket_cmd(interaction: Interaction):
@@ -2775,7 +2718,6 @@ async def close_ticket_cmd(interaction: Interaction):
 
     await asyncio.sleep(3)
     await interaction.channel.delete()
-
 
 @client.tree.command(name="testjoin", description="Testuje powitanie")
 @app_commands.describe(member="Użytkownik do testu")
@@ -2813,7 +2755,6 @@ async def testjoin(interaction: Interaction, member: discord.Member):
         f"✅ Wysłano powitanie testowe dla {member.mention}!", ephemeral=True
     )
 
-
 @client.tree.command(name="wypowiedzenie", description="Złóż wypowiedzenie z pracy")
 async def wypowiedzenie(interaction: Interaction):
     if not is_pracownik(interaction.user):
@@ -2821,7 +2762,6 @@ async def wypowiedzenie(interaction: Interaction):
             "❌ Tylko dla pracowników!", ephemeral=True
         )
     await interaction.response.send_modal(WypowiedzenieModal())
-
 
 @client.tree.command(name="raport", description="Wyślij raport ze sprzedaży")
 @app_commands.describe(kwota="Kwota ze sprzedaży lub auto", dowod="Screenshot dowodu")
@@ -2867,7 +2807,6 @@ async def raport(
         embed=embed,
         allowed_mentions=discord.AllowedMentions(roles=True),
     )
-
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
