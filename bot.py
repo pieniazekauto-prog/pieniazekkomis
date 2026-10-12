@@ -873,7 +873,7 @@ class EmployeePanelView(View):
         )
 
 # ==============================================================================
-# SYSTEM OPŁAT TYGODNIOWYCH (Z URLOPAMI I ZARZĄDEM)
+# SYSTEM OPŁAT TYGODNIOWYCH (Z RANGAMI I ZARZĄDEM)
 # ==============================================================================
 async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     if not custom_date_str:
@@ -888,7 +888,6 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
         date_str = custom_date_str
 
     roles_config = [
-        ("⟡ @👑 ⟡ Zarząd ⟡", ZARZAD_ROLE_ID),
         ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
         ("⟡ @✨ ⟡ Manager ⟡", MANAGER_ROLE_ID),
@@ -917,12 +916,12 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     desc_lines = [f"**Okres rozliczeniowy:** `{date_str}`\n"]
     total_count = 0
 
-    for header, role_id in roles_config:
+    for header, _ in roles_config:
         desc_lines.append(f"> # {header}")
         members_list = section_members[header]
         if members_list:
             for m in members_list:
-                if role_id == ZARZAD_ROLE_ID:
+                if any(r.id == ZARZAD_ROLE_ID for r in m.roles):
                     status_icon = "👑 Zarząd"
                 elif is_on_loa(m.id):
                     status_icon = "🏖️ Urlop"
@@ -993,8 +992,8 @@ async def sync_fees_embed_on_role_change(guild: discord.Guild):
         for line in new_lines:
             line_updated = False
             for p_id in paid_user_ids:
-                if p_id in line and ("❌" in line or "🏖️ Urlop" in line):
-                    updated_new_lines.append(line.replace("❌", "✅").replace("🏖️ Urlop", "✅"))
+                if p_id in line and ("❌" in line or "🏖️ Urlop" in line or "👑 Zarząd" in line):
+                    updated_new_lines.append(line.replace("❌", "✅").replace("🏖️ Urlop", "✅").replace("👑 Zarząd", "✅"))
                     line_updated = True
                     break
             if not line_updated:
@@ -2590,7 +2589,7 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
     updated_lines = []
 
     for line in lines:
-        if str(pracownik.id) in line and ("❌" in line or "✅" in line):
+        if str(pracownik.id) in line and ("❌" in line or "✅" in line or "👑 Zarząd" in line):
             found = True
             if "❌" in line:
                 new_line = line.replace("❌", "✅")
