@@ -2346,7 +2346,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
         ephemeral=True,
     )
 
-@zarzad_group.command(name="przypomnij_oplaty", description="[Zarząd] Wysłanie powiadomienia o opłatach z własną wiadomością do dłużników")
+@zarzad_group.command(name="przypomnij_oplaty", description="[Zarząd] Wysłanie eleganckiego przypomnienia o opłatach bez duplikatów pingu")
 @app_commands.describe(tekst="Treść przypomnienia, np. Okres rozliczeniowy od 12.10.2026 do 19.10.2026 opłaty do 22:00")
 async def przypomnij_oplaty(interaction: Interaction, tekst: str):
     if not is_zarzad(interaction.user):
@@ -2380,20 +2380,15 @@ async def przypomnij_oplaty(interaction: Interaction, tekst: str):
     if to_ping:
         ping_str = " ".join(to_ping)
         
-        embed = discord.Embed(
-            title="⚠️ PIENIĄŻEK AUTO | PRZYPOMNIENIE O OPŁATACH",
-            description=f"**{tekst}**",
-            color=discord.Color.gold(),
-            timestamp=datetime.now()
-        )
-        embed.add_field(name="👥 Osoby z zaległymi składkami", value=ping_str, inline=False)
-        embed.set_footer(
-            text="© Pieniążek Auto OSLORP | System Opłat",
-            icon_url=guild.icon.url if guild.icon else None
+        # Czysta, elegancka wiadomość tekstowa (bez embeda i bez podwójnego pingu)
+        message_content = (
+            f"⚠️ **PIENIĄŻEK AUTO — PRZYPOMNIENIE O OPŁATACH**\n\n"
+            f"> {tekst}\n\n"
+            f"**Osoby z zaległymi składkami:**\n{ping_str}"
         )
 
-        await fees_channel.send(content=ping_str, embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
-        await interaction.response.send_message("✅ Pomyślnie wysłano przypomnienie o opłatach z Twoją treścią!", ephemeral=True)
+        await fees_channel.send(content=message_content, allowed_mentions=discord.AllowedMentions(users=True))
+        await interaction.response.send_message("✅ Pomyślnie wysłano przypomnienie o opłatach!", ephemeral=True)
     else:
         await interaction.response.send_message("✅ Wszyscy pracownicy mają opłacone składki lub są na urlopach. Brak osób do spingowania.", ephemeral=True)
 
