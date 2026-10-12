@@ -597,7 +597,7 @@ class VerificationView(View):
         label="Zweryfikuj się",
         style=ButtonStyle.success,
         custom_id="verify_btn",
-        emoji="🛡️️",
+        emoji="🛡",
     )
     async def verify_user(self, interaction: Interaction, button: Button):
         guild = interaction.guild
@@ -873,7 +873,7 @@ class EmployeePanelView(View):
         )
 
 # ==============================================================================
-# SYSTEM OPŁAT TYGODNIOWYCH (Z URLOPAMI)
+# SYSTEM OPŁAT TYGODNIOWYCH (Z URLOPAMI I ZARZĄDEM)
 # ==============================================================================
 async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     if not custom_date_str:
@@ -888,6 +888,7 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
         date_str = custom_date_str
 
     roles_config = [
+        ("⟡ @👑 ⟡ Zarząd ⟡", ZARZAD_ROLE_ID),
         ("⟡ @👑 ⟡ Owner⟡", OWNER_ROLE_ID),
         ("⟡ @💫 ⟡ Co-Owner⟡", CO_OWNER_ROLE_ID),
         ("⟡ @✨ ⟡ Manager ⟡", MANAGER_ROLE_ID),
@@ -916,12 +917,17 @@ async def generate_fees_embed(guild: discord.Guild, custom_date_str=None):
     desc_lines = [f"**Okres rozliczeniowy:** `{date_str}`\n"]
     total_count = 0
 
-    for header, _ in roles_config:
+    for header, role_id in roles_config:
         desc_lines.append(f"> # {header}")
         members_list = section_members[header]
         if members_list:
             for m in members_list:
-                status_icon = "🏖️ Urlop" if is_on_loa(m.id) else "❌"
+                if role_id == ZARZAD_ROLE_ID:
+                    status_icon = "👑 Zarząd"
+                elif is_on_loa(m.id):
+                    status_icon = "🏖️ Urlop"
+                else:
+                    status_icon = "❌"
                 desc_lines.append(f"- {m.display_name} | {m.mention} {status_icon}")
                 total_count += 1
         else:
@@ -1768,7 +1774,7 @@ async def on_member_join(member: discord.Member):
             f"Siema {member.mention}! 🥂\n\n> Właśnie przekroczyłeś próg"
             " najbardziej prestiżowego komisu w mieście.\n\n"
             "**Jak rozpocząć karierę?**\n"
-            "• Kliknij poniższy przycisk **🛡️️ Zweryfikuj się**, aby uzyskać"
+            "• Kliknij poniższy przycisk **🛡 Zweryfikuj się**, aby uzyskać"
             " dostęp do serwera.\n• Użyj **✏️ Ustaw dane IC**, aby dopasować"
             " swoje imię i nazwisko.\n• Sprawdź zakładki poniżej w celu"
             " złożenia podania lub kontaktu z zarządem."
@@ -1863,7 +1869,7 @@ async def warn_lista(interaction: Interaction, pracownik: discord.Member):
         return await interaction.response.send_message(f"✅ Użytkownik {pracownik.mention} nie posiada żadnych ostrzeżeń.", ephemeral=True)
         
     desc = "\n".join([f"`#{w['id']}` - **{w['date']}** - Powód: {w['reason']}" for w in warns_list])
-    embed = discord.Embed(title=f"⚠️️ Kartoteka Ostrzeżeń: {pracownik.display_name}", description=desc, color=discord.Color.orange())
+    embed = discord.Embed(title=f"⚠ Kartoteka Ostrzeżeń: {pracownik.display_name}", description=desc, color=discord.Color.orange())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 client.tree.add_command(warn_group)
@@ -2305,7 +2311,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
                                 await member.remove_roles(*roles_to_remove)
                             if obywatel_role and obywatel_role not in member.roles:
                                 await member.add_roles(obywatel_role)
-                                
+                            
                             log_hr_history(member.id, "auto_zwolnienie", "Automatyczne zwolnienie za brak opłat")
                             zszokowanych += 1
                             zwolnieni_wzmianki.append(member.mention)
@@ -2337,7 +2343,7 @@ async def zwolnienie_nieoplaconych(interaction: Interaction):
         await send_hr_log(guild, embed_zwolnienia)
 
     await interaction.followup.send(
-        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokovaných}** osób.",
+        f"✅ Pomyślnie zwolniono masowo osoby z zaległymi opłatami (❌). Pominięto osoby na urlopach. Łącznie przetworzono: **{zszokowanych}** osób.",
         ephemeral=True,
     )
 
@@ -2547,6 +2553,11 @@ async def oplata_cmd(interaction: Interaction, pracownik: discord.Member):
     if not is_zarzad(interaction.user):
         return await interaction.response.send_message(
             "❌ Brak uprawnień do zmiany opłat!", ephemeral=True
+        )
+
+    if is_zarzad(pracownik):
+        return await interaction.response.send_message(
+            "❌ Zarząd jest automatycznie zwolniony z opłat tygodniowych!", ephemeral=True
         )
 
     fees_channel = interaction.guild.get_channel(FEES_CHANNEL_ID)
